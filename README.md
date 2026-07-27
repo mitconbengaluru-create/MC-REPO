@@ -225,7 +225,7 @@ npm run dev              # Starts at http://localhost:3000
 |---|---|
 | Frontend | http://localhost:3000 |
 | Backend health | http://localhost:5000/health |
-| Login (test) | Email: `ankita.agarwal@mitconindia.com` / Password: `Ankita0207@10841` |
+| Login (test) | Authenticate using configured user accounts |
 
 ---
 
@@ -348,17 +348,16 @@ All routes are prefixed with `/api`.
 
 ## Seed Users & Credentials
 
-Run `node prisma/seed.js` to populate the database with these users:
+Run `node prisma/seed.js` to populate the database with initial system roles:
 
-| Name | Email | Role | Password |
-|---|---|---|---|
-| Vibin Cariappa | vibin.cariappa@mitconindia.com | developer | `Vibin1806@1038` |
-| Ankita Agrawal | ankita.agarwal@mitconindia.com | **super-admin** | `Ankita0207@10841` |
-| Ravi Injolkar | ravi@mitconcredentia.in | admin | `Ravi2608@90092` |
-| Mahesh Madhavarm | mahesh.madhavarm@mitconindia.com | admin | `Mahesh0607@11150` |
+| Name | Role | Description |
+|---|---|---|
+| System Developer | developer | Developer access role |
+| Super Admin | **super-admin** | System administrator role |
+| Admin | admin | Standard administrator role |
+| Admin | admin | Standard administrator role |
 
-> Also accepted for testing: `password123`, `admin`  
-> ⚠️ Remove all hardcoded passwords before going into real production.
+> ⚠️ Refer to environment configuration and `backend/prisma/seed.js` for seeding accounts. Ensure no production credentials or sensitive emails/passwords are committed.
 
 ---
 
