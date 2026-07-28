@@ -30,17 +30,17 @@ async function main() {
   const users = [
     {
       id: "1038",
-      name: "Vibin Cariappa",
-      email: "vibin.cariappa@mitconindia.com",
+      name: "Developer User",
+      email: "developer@mitconindia.com",
       role: "developer",
       createdAt: new Date(),
       status: "active",
-      designation: "Data Analyst Intern (BDS)"
+      designation: "Data Analyst Intern"
     },
     {
       id: "10841",
-      name: "Ankita Agrawal",
-      email: "ankita.agarwal@mitconindia.com",
+      name: "Super Admin",
+      email: "superadmin@mitconindia.com",
       role: "super-admin",
       createdAt: new Date(),
       status: "active",
@@ -48,8 +48,8 @@ async function main() {
     },
     {
       id: "90092",
-      name: "Ravi Injolkar",
-      email: "ravi@mitconcredentia.in",
+      name: "Admin User One",
+      email: "admin1@mitconindia.com",
       role: "admin",
       createdAt: new Date(),
       status: "active",
@@ -57,8 +57,8 @@ async function main() {
     },
     {
       id: "11150",
-      name: "Mahesh Madhavarm",
-      email: "mahesh.madhavarm@mitconindia.com",
+      name: "Admin User Two",
+      email: "admin2@mitconindia.com",
       role: "admin",
       createdAt: new Date(),
       status: "active",

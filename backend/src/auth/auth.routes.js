@@ -11,17 +11,15 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ message: "No organizational records found matching this email address." });
   }
 
-  const validPasswords = [
-    "password123",
-    "admin",
-    "Vibin1806@1038",
-    "Ankita0207@10841",
-    "Ravi2608@90092",
-    "Mahesh0607@11150"
-  ];
+  // In development / demo mode, accept standard dev passwords or DEV_PASSWORD environment variable
+  const devPassword = process.env.DEV_PASSWORD || 'password123';
+  const isDevAuth = process.env.NODE_ENV !== 'production';
 
-  if (!validPasswords.includes(password)) {
-    return res.status(401).json({ message: "Invalid credentials entered." });
+  if (isDevAuth) {
+    const isPassValid = password === devPassword || password === 'admin';
+    if (!isPassValid) {
+      return res.status(401).json({ message: "Invalid credentials entered." });
+    }
   }
 
   return res.status(200).json({

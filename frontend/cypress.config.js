@@ -20,10 +20,10 @@ export default defineConfig({
     env: {
       // Override via cypress.env.json or CI environment variables
       API_URL: 'http://localhost:5000',
-      TEST_ADMIN_EMAIL: 'admin@bcd.com',
-      TEST_ADMIN_PASSWORD: 'Admin@1234',
-      TEST_USER_EMAIL: 'user@bcd.com',
-      TEST_USER_PASSWORD: 'User@1234',
+      TEST_ADMIN_EMAIL: 'admin@mitconindia.com',
+      TEST_ADMIN_PASSWORD: 'password123',
+      TEST_USER_EMAIL: 'user@mitconindia.com',
+      TEST_USER_PASSWORD: 'password123',
     },
   },
 });
