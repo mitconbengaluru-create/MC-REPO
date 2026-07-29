@@ -97,8 +97,11 @@ router.post('/login', authLimiter, async (req, res) => {
       token
     });
   } catch (err) {
-    console.error('[Auth Login Error]:', err);
-    return res.status(500).json({ success: false, message: 'Authentication service failure.' });
+    console.error('[Auth Login Fatal Error]:', err);
+    return res.status(500).json({ 
+      success: false, 
+      message: err.message || 'Authentication service failure. Please check backend configuration.' 
+    });
   }
 });
 

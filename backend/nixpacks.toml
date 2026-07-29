@@ -10,5 +10,5 @@ cmds = ["npm ci"]
 cmds = ["npx prisma generate"]
 
 [start]
-# rootDirectory=/backend so we are already inside backend/ — no cd needed
-cmd = "node src/server.js"
+# Automatically sync schema with PostgreSQL database on startup before launching application
+cmd = "npx prisma db push --accept-data-loss && node src/server.js"
