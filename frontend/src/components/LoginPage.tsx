@@ -37,9 +37,22 @@ export default function LoginPage({ onSuccess, mfaDefaultSetting }: LoginPagePro
         body: JSON.stringify({ email, password })
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        data = await response.json();
+      } catch {
+        // Response was not JSON (e.g., HTML 502 Bad Gateway or 503)
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          throw new Error("Backend server is starting up. Please wait 10 seconds and try again.");
+        }
+        throw new Error(`Server returned HTTP ${response.status}. Please check network connection.`);
+      }
+
       if (!response.ok) {
-        throw new Error(data.message || "Failed to match user records.");
+        if (response.status === 401) {
+          throw new Error("Invalid email or password. Please verify your credentials.");
+        }
+        throw new Error(data.message || `Authentication error (HTTP ${response.status}).`);
       }
 
       if (data.user.mustChangePassword) {
