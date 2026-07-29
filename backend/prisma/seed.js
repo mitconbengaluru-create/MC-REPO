@@ -67,14 +67,11 @@ async function main() {
     }
   ];
 
-  const defaultHashedPassword = await bcrypt.hash('Password123!', 12);
-
   for (const u of users) {
     await prisma.user.create({
       data: {
         ...u,
-        password: defaultHashedPassword,
-        mustChangePassword: false
+        mustChangePassword: true
       }
     });
   }
