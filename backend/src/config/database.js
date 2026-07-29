@@ -14,10 +14,16 @@ function getPrismaInstance() {
   if (!prismaInstance) {
     const isDev = env.NODE_ENV === 'development';
     
+    let dbUrl = env.DATABASE_URL;
+    if (dbUrl && dbUrl.includes(':6543') && !dbUrl.includes('pgbouncer=true')) {
+      const separator = dbUrl.includes('?') ? '&' : '?';
+      dbUrl = `${dbUrl}${separator}pgbouncer=true`;
+    }
+
     prismaInstance = new PrismaClient({
       datasources: {
         db: {
-          url: env.DATABASE_URL,
+          url: dbUrl,
         },
       },
       log: [
