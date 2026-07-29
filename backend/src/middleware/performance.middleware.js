@@ -2,7 +2,7 @@ import { getMemoryMetrics } from '../utils/performance.util.js';
 import logUtil from '../utils/logger.util.js';
 
 // Warning thresholds
-const SLOW_REQUEST_MS = 2000; // 2 seconds
+const SLOW_REQUEST_MS = 5000; // 5 seconds
 const MEMORY_THRESHOLD_BYTES = 400 * 1024 * 1024; // 400 MB
 
 /**

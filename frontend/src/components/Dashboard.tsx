@@ -1,25 +1,61 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   FileText, ShieldCheck, Users, Activity, 
-  ArrowUpRight, FileSignature, CheckCircle, ShieldAlert, Clock, Bell
+  ArrowUpRight, FileSignature, CheckCircle, ShieldAlert, Clock, Bell, Scale, Shield, AlertTriangle, RefreshCw
 } from "lucide-react";
-import { Document, Checkout, User } from "../types";
+import { Document, Checkout, User, Transaction } from "../types";
 
 interface DashboardProps {
   documents: Document[];
   checkouts: Checkout[];
   users: User[];
+  transactions?: Transaction[];
   onNavigate: (tab: string) => void;
 }
 
-export default function Dashboard({ documents, checkouts, users, onNavigate }: DashboardProps) {
-  // Derive stats
+export default function Dashboard({ documents, checkouts, users, transactions = [], onNavigate }: DashboardProps) {
+  // Derive core stats
   const totalDocs = documents.length;
   const activeCheckouts = checkouts.filter(c => c.status === "Checked Out").length;
   const returnedDocs = checkouts.filter(c => c.status === "Returned" || c.status === "Closed").length;
   const totalUsers = users.length;
   
   const activeCheckedOutList = checkouts.filter(c => c.status === "Checked Out");
+
+  // Derive Legal Document Stats
+  const legalMetrics = useMemo(() => {
+    let totalLegalDocs = 0;
+    let inCustodyCount = 0;
+    let withoutScanCount = 0;
+    let expiringCount = 0;
+    const now = new Date();
+    const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    for (const tx of transactions) {
+      if (tx.validityEnd) {
+        const vEnd = new Date(tx.validityEnd);
+        if (vEnd >= now && vEnd <= thirtyDays) expiringCount++;
+      }
+      if (tx.legalDocuments && tx.legalDocuments.length > 0) {
+        for (const doc of tx.legalDocuments) {
+          totalLegalDocs++;
+          if (doc.custody?.status === 'IN_SAFE') inCustodyCount++;
+          if (!doc.scannedDocuments || doc.scannedDocuments.length === 0) withoutScanCount++;
+        }
+      } else {
+        totalLegalDocs++;
+        withoutScanCount++;
+      }
+    }
+
+    return {
+      totalTransactions: transactions.length,
+      totalLegalDocs,
+      inCustodyCount,
+      withoutScanCount,
+      expiringCount,
+    };
+  }, [transactions]);
 
   const [permissionState, setPermissionState] = useState<NotificationPermission>("default");
 
@@ -61,11 +97,11 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
         </div>
       )}
 
-      {/* 4 CORE STATS WIDGETS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* CORE STATS WIDGETS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
-        {/* Total Documents */}
-        <div onClick={() => onNavigate("repo")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all cursor-pointer">
+        {/* Total Vault Documents */}
+        <div onClick={() => onNavigate("repo")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-slate-300 transition-all cursor-pointer">
           <div className="flex justify-between items-start">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vault Files</span>
             <span className="bg-slate-100 p-2 rounded-xl text-slate-700">
@@ -78,8 +114,22 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
           </div>
         </div>
 
+        {/* Total Legal Documents */}
+        <div onClick={() => onNavigate("legal")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-amber-500/40 transition-all cursor-pointer">
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Legal Documents</span>
+            <span className="bg-amber-500/10 p-2 rounded-xl text-amber-600">
+              <Scale className="w-5 h-5 stroke-[1.5]" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold text-slate-900 font-display">{legalMetrics.totalLegalDocs}</span>
+            <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-1 rounded">{legalMetrics.totalTransactions} Transactions</span>
+          </div>
+        </div>
+
         {/* Checked Out */}
-        <div onClick={() => onNavigate("checkouts")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all cursor-pointer">
+        <div onClick={() => onNavigate("checkouts")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-slate-300 transition-all cursor-pointer">
           <div className="flex justify-between items-start">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Checked Out</span>
             <span className="bg-amber-50 p-2 rounded-xl text-amber-600">
@@ -93,7 +143,7 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
         </div>
 
         {/* Returned Docs */}
-        <div onClick={() => onNavigate("checkouts")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all cursor-pointer">
+        <div onClick={() => onNavigate("checkouts")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-slate-300 transition-all cursor-pointer">
           <div className="flex justify-between items-start">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Returned logs</span>
             <span className="bg-emerald-50 p-2 rounded-xl text-emerald-600">
@@ -107,7 +157,7 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
         </div>
 
         {/* Registered Users */}
-        <div onClick={() => onNavigate("users")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all cursor-pointer">
+        <div onClick={() => onNavigate("users")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-slate-300 transition-all cursor-pointer">
           <div className="flex justify-between items-start">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Registered Users</span>
             <span className="bg-blue-50 p-2 rounded-xl text-blue-600">
@@ -121,14 +171,22 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
         </div>
       </div>
 
-      {/* MID SECTION: ACTIVE CHECKOUTS + STAFF LIST */}
+      {/* MID SECTION: ACTIVE CHECKOUTS + LEGAL CUSTODY WIDGET */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Active Checked Out list */}
-        <div className="lg:col-span-8 bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 font-display">Active Checked Out Documents</h3>
-            <p className="text-xs text-slate-400 font-medium">Verify offsite document travel status</p>
+        <div className="lg:col-span-8 bg-white p-5 border border-slate-200 rounded-2xl shadow-xs space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800 font-display">Active Checked Out Documents</h3>
+              <p className="text-xs text-slate-400 font-medium">Verify offsite document travel status</p>
+            </div>
+            <button
+              onClick={() => onNavigate("checkouts")}
+              className="text-xs font-semibold text-amber-600 hover:text-amber-700"
+            >
+              View Checkouts
+            </button>
           </div>
           
           <div className="overflow-x-auto border border-slate-100 rounded-xl bg-slate-50 p-1">
@@ -170,38 +228,44 @@ export default function Dashboard({ documents, checkouts, users, onNavigate }: D
           </div>
         </div>
 
-        {/* STAFF USERS OVERLAY */}
-        <div className="lg:col-span-4 bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex flex-col h-full max-h-[500px]">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-800 font-display">System Administrators</h3>
-              <p className="text-[11px] text-slate-400">Privileged accounts listing</p>
+        {/* LEGAL CUSTODY & COMPLIANCE WIDGET */}
+        <div className="lg:col-span-4 bg-white p-5 border border-slate-200 rounded-2xl shadow-xs flex flex-col justify-between space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-500" />
+              <h3 className="text-sm font-semibold text-slate-800 font-display">Legal Custody Status</h3>
             </div>
             <button
-              onClick={() => onNavigate("users")}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
+              onClick={() => onNavigate("legal")}
+              className="text-xs font-semibold text-amber-600 hover:text-amber-700"
             >
-              Manage
+              Open Module
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            {users.map((u) => (
-              <div key={u.id} className="flex gap-3 leading-relaxed items-center">
-                <div className="p-1.5 rounded-lg h-8 w-8 flex items-center justify-center shrink-0 bg-slate-100 text-slate-700">
-                  <Users className="w-4 h-4" />
-                </div>
-                <div className="flex-1 text-xs">
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-semibold text-slate-800">{u.name}</span>
-                    <span className="text-[10px] text-indigo-500 font-bold font-mono uppercase bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">{u.role}</span>
-                  </div>
-                  <p className="text-slate-400 text-[10px] font-mono leading-none mt-1">{u.email}</p>
-                </div>
-              </div>
-            ))}
+          <div className="space-y-3 text-xs">
+            <div className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl">
+              <span className="text-slate-600 font-medium">In Safe Vault</span>
+              <span className="font-bold text-slate-900 font-mono">{legalMetrics.inCustodyCount} Docs</span>
+            </div>
+            <div className="flex justify-between items-center p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-900">
+              <span className="font-medium">Missing Scanned Copy</span>
+              <span className="font-bold font-mono">{legalMetrics.withoutScanCount} Docs</span>
+            </div>
+            <div className="flex justify-between items-center p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20 text-rose-900">
+              <span className="font-medium">Expiring Next 30 Days</span>
+              <span className="font-bold font-mono">{legalMetrics.expiringCount} Docs</span>
+            </div>
           </div>
+
+          <button
+            onClick={() => onNavigate("legal")}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all text-center"
+          >
+            Manage Legal Transactions
+          </button>
         </div>
+
       </div>
     </div>
   );

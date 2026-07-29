@@ -18,7 +18,7 @@ const envSchema = z.object({
   API_VERSION: z.string().default('v1'),
   
   DATABASE_URL: z.string().url(),
-  DIRECT_DATABASE_URL: z.string().url().optional(),
+  DIRECT_URL: z.string().url().optional(),
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
@@ -72,7 +72,7 @@ export const config = Object.freeze({
   }),
   database: Object.freeze({
     url: data.DATABASE_URL,
-    directUrl: data.DIRECT_DATABASE_URL || data.DATABASE_URL,
+    directUrl: data.DIRECT_URL || data.DATABASE_URL,
   }),
   supabase: Object.freeze({
     url: data.SUPABASE_URL,

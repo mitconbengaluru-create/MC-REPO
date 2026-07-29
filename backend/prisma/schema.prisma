@@ -10,17 +10,85 @@ datasource db {
 }
 
 // ==========================================
-// Models
+// Enums
+// ==========================================
+
+enum TransactionStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  CLOSED
+  TERMINATED
+  PENDING
+}
+
+enum DocumentStatus {
+  DRAFT
+  ACTIVE
+  PENDING_REVIEW
+  VERIFIED
+  ARCHIVED
+  SUPERSEDED
+}
+
+enum PartyType {
+  COMPANY
+  BORROWER
+  TRUSTEE
+  GUARANTOR
+  LENDER
+  OTHERS
+}
+
+enum CustodyStatus {
+  IN_SAFE
+  CHECKED_OUT
+  IN_TRANSIT
+  RETURNED
+  MISSING
+  ARCHIVED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DocumentType {
+  DEED
+  AGREEMENT
+  MORTGAGE
+  GUARANTEE
+  RESOLUTION
+  CERTIFICATE
+  LETTER
+  UNDERTAKING
+  OTHERS
+}
+
+// ==========================================
+// Core Models
 // ==========================================
 
 model User {
-  id          String   @id
-  name        String
-  email       String   @unique
-  role        String
-  createdAt   DateTime @default(now()) @map("created_at")
-  status      String   @default("active")
-  designation String?
+  id                 String   @id
+  name               String
+  email              String   @unique
+  role               String
+  createdAt          DateTime @default(now()) @map("created_at")
+  status             String   @default("active")
+  designation        String?
+  password           String?  @map("password")
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+
+  createdTransactions    Transaction[]        @relation("TransactionCreatedBy")
+  updatedTransactions    Transaction[]        @relation("TransactionUpdatedBy")
+  createdLegalDocuments  LegalDocument[]      @relation("LegalDocumentCreatedBy")
+  scannedDocumentUploads ScannedDocument[]    @relation("ScannedDocumentUploadedBy")
+  scannedDocumentVerifs  ScannedDocument[]    @relation("ScannedDocumentVerifiedBy")
+  attachmentUploads      DocumentAttachment[] @relation("AttachmentUploadedBy")
+  versionUploads         DocumentVersion[]    @relation("VersionUploadedBy")
 
   @@map("users")
 }
@@ -96,4 +164,193 @@ model SecurityPolicy {
   maxCheckoutDurationDays    Int      @default(30) @map("max_checkout_duration_days")
 
   @@map("security_policies")
+}
+
+// ==========================================
+// Legal Document Management Models
+// ==========================================
+
+model Transaction {
+  id                String            @id @default(uuid())
+  transactionNumber String            @unique @map("transaction_number")
+  transactionType   String            @map("transaction_type")
+  executionDate     DateTime?         @map("execution_date")
+  executionPlace    String?           @map("execution_place")
+  transactionValue  Decimal?          @map("transaction_value") @db.Decimal(18, 2)
+  currency          String            @default("INR")
+  validityStart     DateTime?         @map("validity_start")
+  validityEnd       DateTime?         @map("validity_end")
+  status            TransactionStatus @default(DRAFT)
+  remarks           String?
+  createdById       String?           @map("created_by_id")
+  updatedById       String?           @map("updated_by_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  createdBy User? @relation("TransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("TransactionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  parties        Party[]
+  legalDocuments LegalDocument[]
+
+  @@index([transactionNumber])
+  @@index([executionDate])
+  @@index([createdAt])
+  @@index([status])
+  @@index([transactionType])
+  @@map("transactions")
+}
+
+model Party {
+  id            String    @id @default(uuid())
+  transactionId String    @map("transaction_id")
+  partyType     PartyType @map("party_type")
+  name          String
+  address       String?
+  email         String?
+  phone         String?
+  remarks       String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([name])
+  @@index([partyType])
+  @@map("parties")
+}
+
+model LegalDocument {
+  id             String         @id @default(uuid())
+  transactionId  String         @map("transaction_id")
+  documentType   DocumentType   @map("document_type")
+  documentName   String         @map("document_name")
+  documentNumber String?        @map("document_number")
+  category       String?
+  description    String?
+  currentVersion Int            @default(1) @map("current_version")
+  status         DocumentStatus @default(DRAFT)
+  createdById    String?        @map("created_by_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("LegalDocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  signatories      Signatory[]
+  custody          Custody?
+  scannedDocuments ScannedDocument[]
+  attachments      DocumentAttachment[]
+  versions         DocumentVersion[]
+
+  @@index([transactionId])
+  @@index([documentNumber])
+  @@index([status])
+  @@index([documentType])
+  @@map("legal_documents")
+}
+
+model Signatory {
+  id              String        @id @default(uuid())
+  legalDocumentId String        @map("legal_document_id")
+  name            String
+  designation     String?
+  organization    String?
+  signed          Boolean       @default(false)
+  signingDate     DateTime?     @map("signing_date")
+  remarks         String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("signatories")
+}
+
+model Custody {
+  id                  String        @id @default(uuid())
+  legalDocumentId     String        @unique @map("legal_document_id")
+  custodianName       String        @map("custodian_name")
+  department          String?
+  location            String?
+  originalAvailable   Boolean       @default(true) @map("original_available")
+  scannedAvailable    Boolean       @default(true) @map("scanned_available")
+  numberOfOriginalSets Int           @default(1) @map("number_of_original_sets")
+  receivedDate        DateTime?     @map("received_date")
+  returnedDate        DateTime?     @map("returned_date")
+  status              CustodyStatus @default(IN_SAFE)
+  remarks             String?
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([custodianName])
+  @@index([status])
+  @@map("custodies")
+}
+
+model ScannedDocument {
+  id                 String             @id @default(uuid())
+  legalDocumentId    String             @map("legal_document_id")
+  originalFileName   String             @map("original_file_name")
+  storedFileName     String             @map("stored_file_name")
+  mimeType           String             @map("mime_type")
+  fileSize           Int                @map("file_size")
+  pageCount          Int?               @map("page_count")
+  storagePath        String             @map("storage_path")
+  uploadedById       String?            @map("uploaded_by_id")
+  uploadedDate       DateTime           @default(now()) @map("uploaded_date")
+  verified           Boolean            @default(false)
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  verifiedById       String?            @map("verified_by_id")
+  verifiedDate       DateTime?          @map("verified_date")
+  remarks            String?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+  uploadedBy    User?         @relation("ScannedDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  verifiedBy    User?         @relation("ScannedDocumentVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@map("scanned_documents")
+}
+
+model DocumentAttachment {
+  id               String        @id @default(uuid())
+  legalDocumentId  String        @map("legal_document_id")
+  attachmentType   String?       @map("attachment_type")
+  originalFileName String        @map("original_file_name")
+  storedFileName   String        @map("stored_file_name")
+  mimeType         String        @map("mime_type")
+  fileSize         Int           @map("file_size")
+  storagePath      String        @map("storage_path")
+  description      String?
+  uploadedById     String?       @map("uploaded_by_id")
+  createdDate      DateTime      @default(now()) @map("created_date")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+  uploadedBy    User?         @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@map("document_attachments")
+}
+
+model DocumentVersion {
+  id                 String        @id @default(uuid())
+  legalDocumentId    String        @map("legal_document_id")
+  versionNumber      Int           @map("version_number")
+  storagePath        String?       @map("storage_path")
+  uploadedById       String?       @map("uploaded_by_id")
+  createdDate        DateTime      @default(now()) @map("created_date")
+  remarks            String?
+  currentVersionFlag Boolean       @default(false) @map("current_version_flag")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+  uploadedBy    User?         @relation("VersionUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@map("document_versions")
 }

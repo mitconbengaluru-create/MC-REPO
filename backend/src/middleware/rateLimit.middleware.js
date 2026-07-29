@@ -18,11 +18,11 @@ function rateLimitErrorHandler(message) {
 }
 
 /**
- * General API Limiter. Limit each IP to 10000 requests per 15 minutes to support frequent polling.
+ * General API Limiter. Limit each IP to 500 requests per 15 minutes.
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10000,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitErrorHandler('Too many requests, please try again after 15 minutes.'),

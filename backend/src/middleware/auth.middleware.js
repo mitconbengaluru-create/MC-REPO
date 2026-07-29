@@ -1,34 +1,42 @@
 import { prisma } from '../config/database.js';
+import jwt from 'jsonwebtoken';
+import { config } from '../config/env.js';
 
 /**
  * Express middleware protecting endpoints against unauthenticated requests.
+ * Verifies a real signed JWT issued at login. No fallbacks, no mock tokens.
  */
 export async function requireAuth(req, res, next) {
   try {
     let token = null;
     const authHeader = req.headers.authorization;
 
-    if (authHeader) {
-      token = authHeader.replace('Bearer ', '');
-    } else if (req.cookies && req.cookies.token) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (req.cookies?.token) {
       token = req.cookies.token;
     }
 
-    if (!token) {
-      return res.status(401).json({ message: "Access token is missing." });
+    if (!token || token === 'null' || token === 'undefined') {
+      return res.status(401).json({ success: false, message: 'Access token is missing.' });
     }
 
-    // Decode token or parse mock token
-    if (token.startsWith('mock-jwt-token-for-')) {
-      const email = token.replace('mock-jwt-token-for-', '');
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (user) {
-        req.user = user;
-        return next();
-      }
+    // Verify the JWT signature and expiry
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret);
+    } catch (jwtErr) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token. Please log in again.' });
     }
 
-    return res.status(401).json({ message: "Invalid or expired token." });
+    // Load the user from DB (ensures account still active/exists)
+    const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({ success: false, message: 'User account not found or deactivated.' });
+    }
+
+    req.user = user;
+    next();
   } catch (err) {
     next(err);
   }
@@ -38,11 +46,8 @@ export async function requireAuth(req, res, next) {
  * Express middleware protecting endpoints against revoked session tokens.
  */
 export async function requireSession(req, res, next) {
-  // Relaxed in mock mode: if the user is authenticated, they have an active session
-  if (req.user) {
-    return next();
-  }
-  return res.status(401).json({ message: "No active session." });
+  if (req.user) return next();
+  return res.status(401).json({ success: false, message: 'No active session.' });
 }
 
 /**
@@ -51,17 +56,14 @@ export async function requireSession(req, res, next) {
 export function requireRole(allowedRoles) {
   return (req, res, next) => {
     const userRole = req.user?.role;
-
-    // Super Admin role bypass
-    if (userRole === 'super-admin' || userRole === 'ADMIN') {
-      return next();
+    if (!userRole) {
+      return res.status(403).json({ success: false, message: 'Forbidden: no role assigned.' });
     }
-
-    if (!userRole || !allowedRoles.includes(userRole)) {
-      return res.status(403).json({ message: "Forbidden: insufficient permissions." });
-    }
-
-    next();
+    // super-admin always has access
+    if (userRole === 'super-admin') return next();
+    // Check if user's role is in the allowed list
+    if (allowedRoles.includes(userRole)) return next();
+    return res.status(403).json({ success: false, message: 'Forbidden: insufficient permissions.' });
   };
 }
 
@@ -70,12 +72,9 @@ export function requireRole(allowedRoles) {
  */
 export function requirePermission(requiredPermission) {
   return (req, res, next) => {
-    // In simplified model, we authorize access based on roles
     const userRole = req.user?.role;
-    if (userRole === 'super-admin' || userRole === 'admin') {
-      return next();
-    }
-    return res.status(403).json({ message: "Forbidden: insufficient permissions." });
+    if (userRole === 'super-admin' || userRole === 'admin') return next();
+    return res.status(403).json({ success: false, message: 'Forbidden: insufficient permissions.' });
   };
 }
 

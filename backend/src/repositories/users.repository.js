@@ -1,80 +1,91 @@
+import { prisma } from '../config/database.js';
+
 /**
  * Database repository implementation for User operations.
- * Wraps DB operations using Prisma client singletons.
+ * Wraps DB operations using Prisma client singleton.
  */
 export class UserRepository {
   /**
-   * Queries user profiles records by email identifier.
-   * 
+   * Queries user profile records by email identifier.
+   *
    * @async
-   * @method findUserByEmail
    * @param {string} email - Search email target
    * @returns {Promise<Object|null>} Resolved database user record or null if not found
    */
   async findUserByEmail(email) {
-    // Placeholder: await prisma.user.findUnique({ where: { email } });
-    console.log(`[UserRepository] Querying user profile by Email: ${email}`);
-    return null;
+    return prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() }
+    });
   }
 
   /**
-   * Queries user profiles records by user primary UUID.
-   * 
+   * Queries user profile records by user primary UUID.
+   *
    * @async
-   * @method findUserById
    * @param {string} userId - Target primary identifier
    * @returns {Promise<Object|null>} Resolved database user record or null if not found
    */
   async findUserById(userId) {
-    // Placeholder: await prisma.user.findUnique({ where: { id: userId } });
-    console.log(`[UserRepository] Querying user profile by ID: ${userId}`);
-    return null;
+    return prisma.user.findUnique({
+      where: { id: userId }
+    });
   }
 
   /**
-   * Persists a new user record inside the databases.
-   * 
+   * Persists a new user record inside the database.
+   *
    * @async
-   * @method createUser
    * @param {Object} userData - Insert data payload parameters
    * @returns {Promise<Object>} Created user database record
    */
   async createUser(userData) {
-    // Placeholder: await prisma.user.create({ data: userData });
-    console.log('[UserRepository] Persisting new user account to database...');
-    return { id: `user-${Date.now()}`, ...userData, status: 'PENDING', createdAt: new Date() };
+    return prisma.user.create({
+      data: userData
+    });
   }
 
   /**
    * Mutates user profile database attributes.
-   * 
+   *
    * @async
-   * @method updateUser
    * @param {string} userId - Target primary identifier
    * @param {Object} updates - Target fields modifications
    * @returns {Promise<Object>} Updated user database record
    */
   async updateUser(userId, updates) {
-    // Placeholder: await prisma.user.update({ where: { id: userId }, data: updates });
-    console.log(`[UserRepository] Applying database profile mutations on User ID: ${userId}`);
-    return { id: userId, email: 'user@example.com', ...updates, status: 'ACTIVE', createdAt: new Date() };
+    return prisma.user.update({
+      where: { id: userId },
+      data: updates
+    });
   }
 
   /**
-   * Queries a list of users matching status and role filters.
-   * 
+   * Queries a paginated list of users matching status and role filters.
+   *
    * @async
-   * @method listUsers
    * @param {Object} params - Query and pagination criteria
+   * @param {number} [params.page=1] - Page number
+   * @param {number} [params.limit=20] - Items per page
+   * @param {string} [params.role] - Role filter
+   * @param {string} [params.status] - Status filter
    * @returns {Promise<Object>} List of users and total counter metadata
    */
-  async listUsers(params) {
-    // Placeholder: await prisma.user.findMany({ where: ... });
-    console.log('[UserRepository] Loading paginated user lists from database...');
-    return {
-      users: [],
-      totalCount: 0,
-    };
+  async listUsers({ page = 1, limit = 20, role, status } = {}) {
+    const where = {};
+    if (role) where.role = role;
+    if (status) where.status = status;
+
+    const [users, totalCount] = await prisma.$transaction([
+      prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    return { users, totalCount };
   }
 }
 

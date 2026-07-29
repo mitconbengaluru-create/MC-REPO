@@ -19,6 +19,7 @@ import documentsRouter from './routes/documents.routes.js';
 import checkoutRouter from './routes/checkout.routes.js';
 import backupRouter from './routes/backup.routes.js';
 import notificationRouter from './routes/notification.routes.js';
+import transactionRouter from './routes/transaction.routes.js';
 
 const app = express();
 
@@ -65,6 +66,9 @@ app.use('/api/auth', authRouter);
 
 // Mount Document router
 app.use('/api/documents', documentsRouter);
+
+// Mount Legal Document Transaction router
+app.use('/api/transactions', transactionRouter);
 
 // Mount Checkout and Return router
 app.use('/api', checkoutRouter);

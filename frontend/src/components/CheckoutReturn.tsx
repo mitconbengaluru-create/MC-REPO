@@ -63,36 +63,27 @@ export default function CheckoutReturn({
   const getCheckoutSuggestions = () => {
     if (!checkoutSearch.trim()) return [];
     const term = checkoutSearch.toLowerCase();
-    const list: { key: string; value: string }[] = [];
+    const list: { key: string; value: string; doc: Document }[] = [];
     const seen = new Set<string>();
 
     for (const d of documents) {
-      if (d.client.toLowerCase().includes(term)) {
-        const item = { key: "Client", value: d.client };
-        const serialized = `${item.key}:${item.value}`;
-        if (!seen.has(serialized)) {
-          seen.add(serialized);
-          list.push(item);
-        }
-      }
-      if (d.documentName.toLowerCase().includes(term)) {
-        const item = { key: "Doc", value: d.documentName };
-        const serialized = `${item.key}:${item.value}`;
-        if (!seen.has(serialized)) {
-          seen.add(serialized);
-          list.push(item);
-        }
-      }
-      if (d.placeOfHolding.toLowerCase().includes(term)) {
-        const item = { key: "Holding", value: d.placeOfHolding };
-        const serialized = `${item.key}:${item.value}`;
-        if (!seen.has(serialized)) {
-          seen.add(serialized);
-          list.push(item);
+      if (
+        d.client.toLowerCase().includes(term) ||
+        d.documentName.toLowerCase().includes(term) ||
+        d.documentId.toLowerCase().includes(term) ||
+        d.placeOfHolding.toLowerCase().includes(term)
+      ) {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          list.push({
+            key: d.documentId ? `Ref: ${d.documentId}` : "Doc",
+            value: d.documentName,
+            doc: d
+          });
         }
       }
     }
-    return list.slice(0, 6);
+    return list.slice(0, 8);
   };
 
   const getReturnSuggestions = () => {
@@ -136,13 +127,14 @@ export default function CheckoutReturn({
       setDocDbId(selectedDocForCheckout.id);
       setDocId(selectedDocForCheckout.documentId);
       setDocName(selectedDocForCheckout.documentName);
-    } else {
-      // Pick first available doc that is not already checked out or pending as default
-      const available = documents.find(d => d.status === "Available");
+      setCheckoutSearch(selectedDocForCheckout.documentName);
+    } else if (!docDbId && documents.length > 0) {
+      const available = documents.find(d => d.status === "Available" || d.status === "Approved");
       if (available) {
         setDocDbId(available.id);
         setDocId(available.documentId);
         setDocName(available.documentName);
+        setCheckoutSearch(available.documentName);
       }
     }
   }, [selectedDocForCheckout, documents]);
@@ -153,6 +145,12 @@ export default function CheckoutReturn({
       setDocDbId(matched.id);
       setDocId(matched.documentId);
       setDocName(matched.documentName);
+      setCheckoutSearch(matched.documentName);
+    } else {
+      setDocDbId("");
+      setDocId("");
+      setDocName("");
+      setCheckoutSearch("");
     }
   };
 
@@ -173,10 +171,12 @@ export default function CheckoutReturn({
 
     // Direct checkout log (Immediate checkout for all roles)
     try {
+      const token = localStorage.getItem("bcd_token");
       const response = await fetch("/api/checkouts", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "",
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         },
@@ -226,10 +226,12 @@ export default function CheckoutReturn({
     }
 
     try {
+      const token = localStorage.getItem("bcd_token");
       const response = await fetch(`/api/checkouts/${activeReturnCheckout.id}/return`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "",
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         },
@@ -326,26 +328,30 @@ export default function CheckoutReturn({
                   />
 
                   {showCheckoutSuggestions && checkoutSearch.trim() && (
-                    <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto divide-y divide-slate-100 py-1">
+                    <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-56 overflow-y-auto divide-y divide-slate-100 py-1">
                       {getCheckoutSuggestions().length > 0 ? (
                         getCheckoutSuggestions().map((item, idx) => (
                           <button
                             key={idx}
                             type="button"
                             onMouseDown={() => {
-                              setCheckoutSearch(item.value);
+                              handleDocChange(item.doc.id);
+                              setCheckoutSearch('');
                               setShowCheckoutSuggestions(false);
                             }}
-                            className="w-full px-4 py-2 text-left text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
+                            className="w-full px-4 py-2.5 text-left text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
                           >
-                            <span className="font-semibold text-slate-800 truncate mr-2">{item.value}</span>
-                            <span className="text-[9px] uppercase font-bold text-slate-400 font-mono tracking-wider shrink-0 px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200">
-                              {item.key}
+                            <div className="min-w-0 pr-2">
+                              <span className="font-semibold text-slate-800 truncate block">{item.doc.documentName}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">Party: {item.doc.client} • Holding: {item.doc.placeOfHolding}</span>
+                            </div>
+                            <span className="text-[9px] uppercase font-bold text-slate-500 font-mono tracking-wider shrink-0 px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200">
+                              {item.doc.status}
                             </span>
                           </button>
                         ))
                       ) : (
-                        <div className="px-4 py-3 text-left text-xs text-slate-400 italic">No matches found</div>
+                        <div className="px-4 py-3 text-left text-xs text-slate-400 italic">No matching legal or repository documents found</div>
                       )}
                     </div>
                   )}

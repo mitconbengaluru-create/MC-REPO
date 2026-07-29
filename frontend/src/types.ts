@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'super-admin' | 'admin' | 'developer';
+export type UserRole = 'super-admin' | 'admin' | 'others';
 
 export interface User {
   id: string;
@@ -14,6 +14,7 @@ export interface User {
   createdAt: string;
   status: 'active' | 'suspended';
   designation?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface Document {
@@ -65,8 +66,6 @@ export interface ReturnRecord {
   returningEmployeeName: string;
 }
 
-
-
 export interface Notification {
   id: string;
   title: string;
@@ -83,4 +82,142 @@ export interface SecurityPolicy {
   allowedUploadFormats: string[];
   autoRejectExpiredCheckouts: boolean;
   maxCheckoutDurationDays: number;
+}
+
+// =========================================================================
+// Legal Document Management Domain Types
+// =========================================================================
+
+export type TransactionStatus = 'DRAFT' | 'ACTIVE' | 'EXPIRED' | 'CLOSED' | 'TERMINATED' | 'PENDING';
+export type DocumentStatus = 'DRAFT' | 'ACTIVE' | 'PENDING_REVIEW' | 'VERIFIED' | 'ARCHIVED' | 'SUPERSEDED';
+export type PartyType = 'COMPANY' | 'BORROWER' | 'TRUSTEE' | 'GUARANTOR' | 'LENDER' | 'OTHERS';
+export type CustodyStatus = 'IN_SAFE' | 'CHECKED_OUT' | 'IN_TRANSIT' | 'RETURNED' | 'MISSING' | 'ARCHIVED';
+export type VerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
+export type DocumentType = 'DEED' | 'AGREEMENT' | 'MORTGAGE' | 'GUARANTEE' | 'RESOLUTION' | 'CERTIFICATE' | 'LETTER' | 'UNDERTAKING' | 'OTHERS';
+
+export interface Party {
+  id?: string;
+  transactionId?: string;
+  partyType: PartyType;
+  name: string;
+  address?: string;
+  email?: string;
+  phone?: string;
+  remarks?: string;
+}
+
+export interface Signatory {
+  id?: string;
+  legalDocumentId?: string;
+  name: string;
+  designation?: string;
+  organization?: string;
+  signed: boolean;
+  signingDate?: string;
+  remarks?: string;
+}
+
+export interface Custody {
+  id?: string;
+  legalDocumentId?: string;
+  custodianName: string;
+  department?: string;
+  location?: string;
+  originalAvailable: boolean;
+  scannedAvailable: boolean;
+  numberOfOriginalSets: number;
+  receivedDate?: string;
+  returnedDate?: string;
+  status: CustodyStatus;
+  remarks?: string;
+}
+
+export interface ScannedDocument {
+  id: string;
+  legalDocumentId: string;
+  originalFileName: string;
+  storedFileName: string;
+  mimeType: string;
+  fileSize: number;
+  pageCount?: number;
+  storagePath: string;
+  uploadedById?: string;
+  uploadedDate: string;
+  verified: boolean;
+  verificationStatus: VerificationStatus;
+  verifiedById?: string;
+  verifiedDate?: string;
+  remarks?: string;
+  uploadedBy?: { name: string; email: string };
+  verifiedBy?: { name: string; email: string };
+}
+
+export interface DocumentAttachment {
+  id: string;
+  legalDocumentId: string;
+  attachmentType?: string;
+  originalFileName: string;
+  storedFileName: string;
+  mimeType: string;
+  fileSize: number;
+  storagePath: string;
+  description?: string;
+  uploadedById?: string;
+  createdDate: string;
+  uploadedBy?: { name: string; email: string };
+}
+
+export interface DocumentVersion {
+  id: string;
+  legalDocumentId: string;
+  versionNumber: number;
+  storagePath?: string;
+  uploadedById?: string;
+  createdDate: string;
+  remarks?: string;
+  currentVersionFlag: boolean;
+  uploadedBy?: { name: string; email: string };
+}
+
+export interface LegalDocument {
+  id: string;
+  transactionId: string;
+  documentType: DocumentType;
+  documentName: string;
+  documentNumber?: string;
+  category?: string;
+  description?: string;
+  currentVersion: number;
+  status: DocumentStatus;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+  signatories?: Signatory[];
+  custody?: Custody;
+  scannedDocuments?: ScannedDocument[];
+  attachments?: DocumentAttachment[];
+  versions?: DocumentVersion[];
+  createdBy?: { name: string; email: string };
+}
+
+export interface Transaction {
+  id: string;
+  transactionNumber: string;
+  transactionType: string;
+  executionDate?: string;
+  executionPlace?: string;
+  transactionValue?: number | string;
+  currency: string;
+  validityStart?: string;
+  validityEnd?: string;
+  status: TransactionStatus;
+  remarks?: string;
+  createdById?: string;
+  updatedById?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: { name: string; email: string };
+  updatedBy?: { name: string; email: string };
+  parties?: Party[];
+  legalDocuments?: LegalDocument[];
 }

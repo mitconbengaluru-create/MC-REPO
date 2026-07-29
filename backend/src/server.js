@@ -5,6 +5,7 @@ import { shutdownQueuesAndWorkers } from './jobs/index.js';
 import { initSocketServer, getIO } from './config/socket.js';
 import { prisma } from './config/database.js';
 import { supabaseAdmin } from './config/supabase.js';
+import { purgeExpiredNotifications } from './utils/notification.util.js';
 
 // Load environmental parameters
 dotenv.config();
@@ -127,8 +128,12 @@ async function startBootstrap() {
 
     console.log(`✅ Startup Health Check: PASSED (db=${dbReady}, storage=${storageReady}, redis=disabled)`);
 
-    // ── 3. Socket.IO ─────────────────────────────────────────────────────────
+    // ── 3. Socket.IO & Notification TTL Purge ──────────────────────────────
     initSocketServer(server);
+    
+    // Purge expired notifications on startup and every 2 minutes
+    purgeExpiredNotifications().catch(() => null);
+    setInterval(purgeExpiredNotifications, 2 * 60 * 1000);
 
     // ── 4. Listen on all interfaces (required for Railway/containers) ────────
     server.listen(PORT, '0.0.0.0', () => {

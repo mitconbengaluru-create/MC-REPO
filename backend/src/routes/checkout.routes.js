@@ -1,12 +1,19 @@
 import { Router } from 'express';
 import { prisma } from '../config/database.js';
 import { getIO } from '../config/socket.js';
+import { broadcastSystemNotification } from '../utils/notification.util.js';
+import { requireAuth } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
+// All checkout and return routes require authentication
+router.use(requireAuth);
+
 router.get('/checkouts', async (req, res) => {
   try {
-    const checkouts = await prisma.checkout.findMany();
+    const checkouts = await prisma.checkout.findMany({
+      orderBy: { id: 'desc' }
+    });
     res.status(200).json(checkouts);
   } catch (err) {
     console.error("Error fetching checkouts from PostgreSQL:", err);
@@ -17,51 +24,87 @@ router.get('/checkouts', async (req, res) => {
 router.post('/checkouts', async (req, res) => {
   const body = req.body;
   try {
-    const doc = await prisma.document.findUnique({ where: { id: body.documentDbId } });
-    if (!doc) {
-      return res.status(404).json({ message: "Document not found." });
+    let docId = body.documentId;
+    let docName = body.documentName;
+    let docDbId = body.documentDbId;
+
+    // Lookup in standard documents first
+    let stdDoc = await prisma.document.findUnique({ where: { id: docDbId } }).catch(() => null);
+    let legalDoc = null;
+
+    if (!stdDoc) {
+      // Lookup in legal documents
+      legalDoc = await prisma.legalDocument.findUnique({
+        where: { id: docDbId },
+        include: { custody: true, transaction: true }
+      }).catch(() => null);
+    }
+
+    if (!stdDoc && !legalDoc) {
+      return res.status(404).json({ message: "Target document not found in repository." });
+    }
+
+    if (legalDoc) {
+      docName = legalDoc.documentName;
+      docId = legalDoc.documentNumber || legalDoc.transaction?.transactionNumber || legalDoc.id;
+    } else if (stdDoc) {
+      docName = stdDoc.documentName;
+      docId = stdDoc.documentId;
     }
 
     const newCheckout = await prisma.checkout.create({
       data: {
         id: `chk-${Date.now()}`,
-        documentId: doc.documentId,
-        documentDbId: doc.id,
-        documentName: doc.documentName,
+        documentId: docId,
+        documentDbId: docDbId,
+        documentName: docName,
         employeeName: body.employeeName,
-        employeeId: body.employeeId,
-        designation: body.designation,
+        employeeId: body.employeeId || 'N/A',
+        designation: body.designation || 'Staff',
         checkoutDate: new Date().toISOString().split('T')[0],
         destination: body.destination,
         purpose: body.purpose,
         expectedReturnDate: body.expectedReturnDate,
         approvalAuthority: body.approvalAuthority || "Self Check",
         status: "Checked Out",
-        signature: body.signature,
-        signatureType: body.signatureType
+        signature: body.signature || '',
+        signatureType: body.signatureType || 'typed'
       }
     });
 
-    await prisma.document.update({
-      where: { id: doc.id },
-      data: { status: "Checked Out" }
-    });
-
-    // Notify admins
-    const notification = await prisma.notification.create({
-      data: {
-        id: `not-${Date.now()}`,
-        title: "Document Checked Out",
-        message: `${newCheckout.employeeName} checked out document ${newCheckout.documentId} (${newCheckout.documentName}) for ${newCheckout.destination}.`,
-        status: "unread",
-        timestamp: new Date()
-      }
-    });
-
-    const io = getIO();
-    if (io) {
-      io.emit('notification:new', notification);
+    if (stdDoc) {
+      await prisma.document.update({
+        where: { id: stdDoc.id },
+        data: { status: "Checked Out" }
+      });
     }
+
+    if (legalDoc) {
+      // Automatically update Legal Document physical custody record
+      await prisma.custody.upsert({
+        where: { legalDocumentId: legalDoc.id },
+        create: {
+          legalDocumentId: legalDoc.id,
+          custodianName: body.employeeName,
+          department: body.destination,
+          status: 'CHECKED_OUT',
+          receivedDate: new Date(),
+          remarks: `Checked out for ${body.purpose}. Expected return: ${body.expectedReturnDate}`
+        },
+        update: {
+          custodianName: body.employeeName,
+          department: body.destination,
+          status: 'CHECKED_OUT',
+          remarks: `Checked out for ${body.purpose}. Expected return: ${body.expectedReturnDate}`
+        }
+      });
+    }
+
+    // Record Audit Trail Notification
+    await broadcastSystemNotification(
+      "Document Checked Out Alert",
+      `${newCheckout.employeeName} checked out document "${newCheckout.documentName}" [Ref: ${newCheckout.documentId}] for ${newCheckout.destination}.`
+    );
 
     res.status(200).json(newCheckout);
   } catch (err) {
@@ -84,10 +127,39 @@ router.post('/checkouts/:id/return', async (req, res) => {
       data: { status: "Returned" }
     });
 
-    await prisma.document.update({
-      where: { id: checkout.documentDbId },
-      data: { status: "Available" }
-    });
+    // Try updating standard document status
+    const stdDoc = await prisma.document.findUnique({ where: { id: checkout.documentDbId } }).catch(() => null);
+    if (stdDoc) {
+      await prisma.document.update({
+        where: { id: checkout.documentDbId },
+        data: { status: "Available" }
+      });
+    }
+
+    // Try updating legal document status & physical custody
+    const legalDoc = await prisma.legalDocument.findUnique({ where: { id: checkout.documentDbId } }).catch(() => null);
+    if (legalDoc) {
+      await prisma.legalDocument.update({
+        where: { id: checkout.documentDbId },
+        data: { status: "ACTIVE" }
+      });
+
+      await prisma.custody.upsert({
+        where: { legalDocumentId: checkout.documentDbId },
+        create: {
+          legalDocumentId: checkout.documentDbId,
+          custodianName: body.returningEmployeeName || "Safe Custody Officer",
+          status: "IN_SAFE",
+          returnedDate: new Date(),
+          remarks: `Returned by ${body.returningEmployeeName}. Condition: ${body.condition || 'Perfect'}. Notes: ${body.notes || 'None'}`
+        },
+        update: {
+          status: "IN_SAFE",
+          returnedDate: new Date(),
+          remarks: `Returned by ${body.returningEmployeeName}. Condition: ${body.condition || 'Perfect'}. Notes: ${body.notes || 'None'}`
+        }
+      });
+    }
 
     await prisma.return.create({
       data: {
@@ -104,32 +176,24 @@ router.post('/checkouts/:id/return', async (req, res) => {
       }
     });
 
-    // Notify admins
-    const notification = await prisma.notification.create({
-      data: {
-        id: `not-${Date.now()}`,
-        title: "Document Returned",
-        message: `${body.returningEmployeeName} checked in/returned document ${checkout.documentId} (${checkout.documentName}).`,
-        status: "unread",
-        timestamp: new Date()
-      }
-    });
-
-    const io = getIO();
-    if (io) {
-      io.emit('notification:new', notification);
-    }
+    // Record Audit Trail Notification
+    await broadcastSystemNotification(
+      "Document Checked In & Returned",
+      `${body.returningEmployeeName} checked in/returned document "${checkout.documentName}". Condition: ${body.condition || 'Perfect'}.`
+    );
 
     res.status(200).json(updatedCheckout);
   } catch (err) {
-    console.error("Error execution return in PostgreSQL:", err);
+    console.error("Error executing return in PostgreSQL:", err);
     res.status(500).json({ message: "Failed to perform return." });
   }
 });
 
 router.get('/returns', async (req, res) => {
   try {
-    const returns = await prisma.return.findMany();
+    const returns = await prisma.return.findMany({
+      orderBy: { id: 'desc' }
+    });
     res.status(200).json(returns);
   } catch (err) {
     console.error("Error fetching returns from PostgreSQL:", err);

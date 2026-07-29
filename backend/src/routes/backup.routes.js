@@ -1,12 +1,24 @@
 import { Router } from 'express';
 import { prisma } from '../config/database.js';
+import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
+// All backup routes require authentication and super-admin role
+router.use(requireAuth);
+router.use(requireRole(['super-admin']));
+
+// GET /api/backup — Dump full database snapshot (super-admin only)
 router.get('/backup', async (req, res) => {
   try {
     const policies = await prisma.securityPolicy.findMany();
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      select: {
+        id: true, name: true, email: true, role: true, status: true,
+        designation: true, createdAt: true, mustChangePassword: true
+        // password deliberately excluded from backup export
+      }
+    });
     const documents = await prisma.document.findMany();
     const checkouts = await prisma.checkout.findMany();
     const returns = await prisma.return.findMany();
@@ -14,6 +26,8 @@ router.get('/backup', async (req, res) => {
     const approvals = await prisma.approvalRequest.findMany();
 
     const backupData = {
+      exportedBy: req.user.email,
+      exportedAt: new Date().toISOString(),
       policies: policies[0] || null,
       users,
       documents,
@@ -24,18 +38,20 @@ router.get('/backup', async (req, res) => {
     };
 
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="mitcon-backup-${Date.now()}.json"`);
     res.status(200).send(JSON.stringify(backupData, null, 2));
   } catch (err) {
-    console.error("Backup failed in PostgreSQL:", err);
-    res.status(500).json({ message: "Backup operation failed." });
+    console.error('Backup failed in PostgreSQL:', err);
+    res.status(500).json({ success: false, message: 'Backup operation failed.' });
   }
 });
 
+// POST /api/backup/restore — Restore database from backup (super-admin only, destructive)
 router.post('/backup/restore', async (req, res) => {
   const { backupPayload } = req.body;
 
   if (!backupPayload || !backupPayload.users || !backupPayload.documents) {
-    return res.status(400).json({ message: "Invalid backup payload format." });
+    return res.status(400).json({ success: false, message: 'Invalid backup payload format.' });
   }
 
   try {
@@ -52,11 +68,11 @@ router.post('/backup/restore', async (req, res) => {
       const p = backupPayload.policies;
       await prisma.securityPolicy.create({
         data: {
-          key: "global_policy",
+          key: 'global_policy',
           passwordMinLength: p.passwordMinLength ?? 8,
           requireMfa: p.requireMfa ?? false,
           sessionTimeoutMinutes: p.sessionTimeoutMinutes ?? 30,
-          allowedUploadFormats: p.allowedUploadFormats ?? ["pdf", "docx", "xlsx"],
+          allowedUploadFormats: p.allowedUploadFormats ?? ['pdf', 'docx', 'xlsx'],
           autoRejectExpiredCheckouts: p.autoRejectExpiredCheckouts ?? false,
           maxCheckoutDurationDays: p.maxCheckoutDurationDays ?? 30
         }
@@ -64,18 +80,18 @@ router.post('/backup/restore', async (req, res) => {
     } else {
       await prisma.securityPolicy.create({
         data: {
-          key: "global_policy",
+          key: 'global_policy',
           passwordMinLength: 8,
           requireMfa: false,
           sessionTimeoutMinutes: 30,
-          allowedUploadFormats: ["pdf", "docx", "xlsx"],
+          allowedUploadFormats: ['pdf', 'docx', 'xlsx'],
           autoRejectExpiredCheckouts: false,
           maxCheckoutDurationDays: 30
         }
       });
     }
 
-    // Restore Users
+    // Restore Users — passwords from backup are NOT restored (security: force reset)
     if (backupPayload.users && Array.isArray(backupPayload.users)) {
       for (const u of backupPayload.users) {
         await prisma.user.create({
@@ -85,7 +101,10 @@ router.post('/backup/restore', async (req, res) => {
             email: u.email,
             role: u.role,
             createdAt: u.createdAt ? new Date(u.createdAt) : new Date(),
-            status: u.status || "active"
+            status: u.status || 'active',
+            mustChangePassword: true,
+            // Assign a fresh random password — users must change on first login
+            password: null
           }
         });
       }
@@ -103,9 +122,9 @@ router.post('/backup/restore', async (req, res) => {
             dateUploaded: d.dateUploaded ? new Date(d.dateUploaded) : new Date(),
             expiryDate: d.expiryDate,
             filePath: d.filePath,
-            status: d.status || "Available",
+            status: d.status || 'Available',
             uploadedBy: d.uploadedBy,
-            client: d.client || "Internal Core"
+            client: d.client || 'Internal Core'
           }
         });
       }
@@ -137,7 +156,10 @@ router.post('/backup/restore', async (req, res) => {
     // Restore Returns
     if (backupPayload.returns && Array.isArray(backupPayload.returns)) {
       for (const r of backupPayload.returns) {
-        await prisma.return.create({ data: r });
+        // Validate each return record has required fields before inserting
+        if (r.id && r.checkoutId) {
+          await prisma.return.create({ data: r });
+        }
       }
     }
 
@@ -158,32 +180,17 @@ router.post('/backup/restore', async (req, res) => {
             expectedReturnDate: a.expectedReturnDate,
             signature: a.signature,
             signatureType: a.signatureType,
-            status: a.status || "Pending Approval",
+            status: a.status || 'Pending Approval',
             requestedAt: a.requestedAt ? new Date(a.requestedAt) : new Date()
           }
         });
       }
     }
 
-    // Restore Notifications
-    if (backupPayload.notifications && Array.isArray(backupPayload.notifications)) {
-      for (const n of backupPayload.notifications) {
-        await prisma.notification.create({
-          data: {
-            id: n.id,
-            title: n.title,
-            message: n.message,
-            status: n.status || "unread",
-            timestamp: n.timestamp ? new Date(n.timestamp) : new Date()
-          }
-        });
-      }
-    }
-
-    res.status(200).json({ success: true, message: "Database restored successfully." });
+    res.status(200).json({ success: true, message: 'Database restored successfully. All users must reset their passwords.' });
   } catch (err) {
-    console.error("Database restore operation failed in PostgreSQL:", err);
-    res.status(500).json({ message: "Database restore failed." });
+    console.error('Database restore operation failed in PostgreSQL:', err);
+    res.status(500).json({ success: false, message: 'Database restore failed.' });
   }
 });
 

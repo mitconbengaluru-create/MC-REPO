@@ -18,7 +18,8 @@ export function normalizeError(err) {
       field: e.path.join('.'),
       message: e.message,
     }));
-    return new AppError('Validation failed.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.VALIDATION_ERROR, details);
+    const detailSummary = details.map(d => `${d.field}: ${d.message}`).join(' | ');
+    return new AppError(`Validation failed: ${detailSummary}`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.VALIDATION_ERROR, details);
   }
 
   // 2. Prisma Database Error Mapping

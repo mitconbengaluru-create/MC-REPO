@@ -27,7 +27,7 @@ function getPrismaInstance() {
       ],
     });
 
-    const SLOW_QUERY_MS = 500;
+    const SLOW_QUERY_MS = 2000;
 
     prismaInstance.$on('query', (event) => {
       if (event.duration > SLOW_QUERY_MS) {

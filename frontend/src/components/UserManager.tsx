@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, UserRole, SecurityPolicy } from "../types";
-import { Shield, Eye, Trash, UserPlus, Users as UsersIcon } from "lucide-react";
+import { Shield, Eye, Trash, UserPlus, Users as UsersIcon, ShieldAlert } from "lucide-react";
 
 interface UserManagerProps {
   users: User[];
@@ -21,7 +21,7 @@ export default function UserManager({
   // Create User fields
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<UserRole>("developer");
+  const [role, setRole] = useState<UserRole>("others");
   const [designation, setDesignation] = useState("");
   const [createUserError, setCreateUserError] = useState("");
   const [createUserSuccess, setCreateUserSuccess] = useState(false);
@@ -34,6 +34,11 @@ export default function UserManager({
   
   const [policyError, setPolicyError] = useState("");
   const [policySuccess, setPolicySuccess] = useState(false);
+
+  // User deletion modal state
+  const [deleteTargetUser, setDeleteTargetUser] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [deleteUserError, setDeleteUserError] = useState("");
 
   useEffect(() => {
     setPasswordMinLength(policies.passwordMinLength);
@@ -59,10 +64,12 @@ export default function UserManager({
     }
 
     try {
+      const token = localStorage.getItem("bcd_token");
       const response = await fetch("/api/users", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "",
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         },
@@ -88,10 +95,12 @@ export default function UserManager({
     setPolicySuccess(false);
 
     try {
+      const token = localStorage.getItem("bcd_token");
       const response = await fetch("/api/policies", {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "",
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         },
@@ -113,44 +122,57 @@ export default function UserManager({
     }
   };
 
-  const handleDeleteUser = async (id: string, userEmail: string) => {
-    if (id === currentUser.id) {
-      alert("Self action denied: You cannot delete your own active administrator account.");
+  const handleOpenDeleteModal = (u: User) => {
+    if (u.id === currentUser.id) {
+      setPolicyError("Self action denied: You cannot delete your own active administrator account.");
       return;
     }
-    if (!window.confirm(`SECURITY ALERT: Are you sure you want to permanently delete user ${userEmail}? This will strip their active credentials.`)) return;
+    setDeleteTargetUser(u);
+    setDeleteUserError("");
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTargetUser) return;
+    setIsDeletingUser(true);
+    setDeleteUserError("");
 
     try {
-      const response = await fetch(`/api/users/${id}`, {
+      const token = localStorage.getItem("bcd_token");
+      const response = await fetch(`/api/users/${deleteTargetUser.id}`, {
         method: "DELETE",
         headers: {
+          "Authorization": token ? `Bearer ${token}` : "",
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         }
       });
-      if (response.ok) {
-        onRefresh();
-      } else {
+
+      if (!response.ok) {
         const errorData = await response.json();
-        alert(errorData.message || "Action refused by security.");
+        throw new Error(errorData.message || "Action refused by security.");
       }
-    } catch (error) {
-      console.error(error);
+
+      setDeleteTargetUser(null);
+      onRefresh();
+    } catch (error: any) {
+      setDeleteUserError(error.message || "Failed to delete user account.");
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
   const isSuperAdmin = currentUser.role === "super-admin";
 
   return (
-    <div id="user-mangement-panel" className="grid grid-cols-1 lg:grid-cols-12 gap-6 leading-relaxed font-sans">
+    <div id="user-mangement-panel" className="space-y-6 leading-relaxed font-sans">
       
-      {/* COLUMN A: REGISTERED STAFF USERS LIST (8 COLUMNS) */}
-      <div className="lg:col-span-8 bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-4">
+      {/* REGISTERED STAFF USERS LIST (FULL WIDTH) */}
+      <div className="w-full bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-4">
         <div>
           <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-1.5">
             <UsersIcon className="text-violet-500 w-5 h-5 stroke-[1.5]" /> Secure Organizational Users Accounts
           </h2>
-          <p className="text-xs text-slate-500">View and update system privileges parameters</p>
+          <p className="text-xs text-slate-500 font-medium">Manage registered staff accounts, roles, and security credentials</p>
         </div>
 
         {/* STAFF LIST TABLE */}
@@ -172,7 +194,7 @@ export default function UserManager({
                       return "bg-amber-100 text-amber-800 border-amber-200 font-bold";
                     case "admin":
                       return "bg-sky-100 text-sky-800 border-sky-200";
-                    case "developer":
+                    case "others":
                       return "bg-purple-100 text-purple-800 border-purple-200 font-serif font-bold";
                     default:
                       return "bg-slate-100 text-slate-600 border-slate-200";
@@ -203,8 +225,9 @@ export default function UserManager({
                     <td className="px-4 py-3 text-right">
                       {isSuperAdmin ? (
                         <button
-                          onClick={() => handleDeleteUser(u.id, u.email)}
+                          onClick={() => handleOpenDeleteModal(u)}
                           disabled={u.id === currentUser.id}
+                          title="Revoke and Delete User Account"
                           className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg disabled:opacity-30 cursor-pointer"
                         >
                           <Trash className="w-3.5 h-3.5" />
@@ -270,7 +293,7 @@ export default function UserManager({
                 >
                   <option value="admin">Administrator</option>
                   <option value="super-admin">Super Admin</option>
-                  <option value="developer">Developer</option>
+                  <option value="others">Others</option>
                 </select>
               </div>
               
@@ -297,93 +320,68 @@ export default function UserManager({
         )}
       </div>
 
-      {/* COLUMN B: SECURITY COMPLIANCE POLICIES (4 COLUMNS) */}
-      <div className="lg:col-span-4 bg-slate-900 text-white p-5 border border-slate-800 rounded-2xl shadow-sm space-y-4">
-        <div className="border-b border-slate-800 pb-3">
-          <h2 className="text-base font-bold font-display flex items-center gap-1.5 text-slate-100">
-            <Shield className="text-amber-500 w-5 h-5 stroke-[1.5]" /> Global Security Policies Config
-          </h2>
-          <p className="text-xs text-slate-400">Manage password constraints and checkout limits</p>
+      {/* DELETE USER CONFIRMATION MODAL */}
+      {deleteTargetUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-slate-800 animate-scaleIn space-y-4">
+            <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold font-display text-slate-900">Security Alert: Revoke User Access</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Permanent organizational credentials termination</p>
+              </div>
+            </div>
+
+            {deleteUserError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                <span>{deleteUserError}</span>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">User Name:</span>
+                <span className="font-semibold text-slate-800">{deleteTargetUser.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Work Email:</span>
+                <span className="font-mono font-semibold text-slate-800">{deleteTargetUser.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Assigned Role:</span>
+                <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded">
+                  {deleteTargetUser.role}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete user <b className="text-slate-900">{deleteTargetUser.email}</b>? This action will immediately strip their active credentials and block access to the repository.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetUser(null)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={confirmDeleteUser}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold font-display shadow-xs transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Trash className="w-3.5 h-3.5" />
+                {isDeletingUser ? "Revoking Access..." : "Permanently Delete User"}
+              </button>
+            </div>
+          </div>
         </div>
-
-        {policySuccess && (
-          <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 p-2.5 rounded-lg text-[11px] flex items-center gap-1 animate-fadeIn">
-            <span>✓ Policy variables successfully written to Express node.</span>
-          </div>
-        )}
-
-        {policyError && (
-          <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 p-2.5 rounded-lg text-xs">
-            {policyError}
-          </div>
-        )}
-
-        <form onSubmit={handleUpdatePolicy} className="space-y-4 text-xs">
-          
-          <div className="space-y-3.5">
-
-            {/* MIN LENGTH */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5">
-              <label className="block font-semibold text-slate-100">Minimum Password Passcode Length</label>
-              <input
-                id="policy-pwd-len"
-                type="number"
-                min={4}
-                max={30}
-                value={passwordMinLength}
-                onChange={(e) => setPasswordMinLength(Number(e.target.value))}
-                disabled={!isSuperAdmin}
-                className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-white text-xs font-mono"
-              />
-              <p className="text-[10px] text-slate-500 leading-tight">Must possess characters or digit keys.</p>
-            </div>
-
-            {/* EXPIRY DAYS */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5">
-              <label className="block font-semibold text-slate-100">Maximum Checkout Interval (Days)</label>
-              <input
-                id="policy-checkout-limit"
-                type="number"
-                min={1}
-                max={120}
-                value={maxCheckoutDurationDays}
-                onChange={(e) => setMaxCheckoutDurationDays(Number(e.target.value))}
-                disabled={!isSuperAdmin}
-                className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-white text-xs font-mono"
-              />
-              <p className="text-[10px] text-slate-500 leading-tight">Longest allowed duration for temporary offsite document removal.</p>
-            </div>
-
-            {/* TIMEOUT LIMIT */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5">
-              <label className="block font-semibold text-slate-100">Session Expiration timeout (Minutes)</label>
-              <input
-                id="policy-session-timeout"
-                type="number"
-                min={5}
-                max={300}
-                value={sessionTimeoutMinutes}
-                onChange={(e) => setSessionTimeoutMinutes(Number(e.target.value))}
-                disabled={!isSuperAdmin}
-                className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-white text-xs font-mono"
-              />
-            </div>
-          </div>
-
-          {isSuperAdmin ? (
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold rounded-xl text-xs transition-all uppercase tracking-wide cursor-pointer flex items-center justify-center gap-1"
-            >
-              Commit Global Safety Parameters
-            </button>
-          ) : (
-            <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-2.5 rounded-lg text-[10px] text-center font-semibold">
-              🔒 Clearance Required: Super Admin access tokens authorized to overwrite policy configurations.
-            </div>
-          )}
-        </form>
-      </div>
+      )}
 
     </div>
   );

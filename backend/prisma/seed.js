@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { initialDocuments } from '../src/config/initialDocuments.js';
 
@@ -66,8 +67,16 @@ async function main() {
     }
   ];
 
+  const defaultHashedPassword = await bcrypt.hash('Password123!', 12);
+
   for (const u of users) {
-    await prisma.user.create({ data: u });
+    await prisma.user.create({
+      data: {
+        ...u,
+        password: defaultHashedPassword,
+        mustChangePassword: false
+      }
+    });
   }
 
   console.log('Seeding standard document library...');

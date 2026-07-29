@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import {
-  LogOut, LayoutDashboard, FolderOpen, RefreshCw, History, Sliders, FileBarChart
+  LogOut, LayoutDashboard, RefreshCw, History, Sliders, FileBarChart, FileCheck
 } from "lucide-react";
-import { User, Document, Checkout, Notification, SecurityPolicy, ReturnRecord } from "./types";
+import { User, Document, Checkout, Notification, SecurityPolicy, ReturnRecord, Transaction } from "./types";
 import LoginPage from "./components/LoginPage";
 import Dashboard from "./components/Dashboard";
-import RepoManager from "./components/RepoManager";
 import CheckoutReturn from "./components/CheckoutReturn";
 import UserManager from "./components/UserManager";
 import ReportModule from "./components/ReportModule";
 import NotificationCenter from "./components/NotificationCenter";
+import LegalDocumentManager from "./components/LegalDocumentManager";
+import ToastNotificationContainer, { ToastItem } from "./components/ToastNotificationContainer";
 import mitconLogo from "./assets/logo.png";
 
 export default function App() {
@@ -22,17 +23,23 @@ export default function App() {
     return localStorage.getItem("bcd_token");
   });
   const [activeTab, setActiveTab] = useState<string>(() => {
-    return localStorage.getItem("bcd_active_tab") || "dashboard";
+    const saved = localStorage.getItem("bcd_active_tab");
+    return saved === "repo" || !saved ? "dashboard" : saved;
   });
 
+  const [activeToasts, setActiveToasts] = useState<ToastItem[]>([]);
+
   useEffect(() => {
-    if (activeTab) {
+    if (activeTab === "repo") {
+      setActiveTab("dashboard");
+    } else if (activeTab) {
       localStorage.setItem("bcd_active_tab", activeTab);
     }
   }, [activeTab]);
 
   // Database synchronist state
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [checkouts, setCheckouts] = useState<Checkout[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [returns, setReturns] = useState<ReturnRecord[]>([]);
@@ -45,9 +52,46 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
 
-
   // Cross tab selectors state
   const [selectedDocForCheckout, setSelectedDocForCheckout] = useState<Document | null>(null);
+
+  // Combined documents list for Checkout & Return including Legal Documents from Transactions
+  const allSelectableDocuments = React.useMemo(() => {
+    const combined: Document[] = [...documents];
+    const seenIds = new Set(documents.map(d => d.id));
+
+    transactions.forEach(tx => {
+      const partyNames = tx.parties && tx.parties.length > 0
+        ? tx.parties.map(p => p.partyName).join(', ')
+        : (tx.transactionType || 'Legal Transaction');
+
+      const placeOfHolding = tx.executionPlace || 'Legal Vault';
+      const defaultDate = tx.executionDate ? new Date(tx.executionDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+      if (tx.legalDocuments && tx.legalDocuments.length > 0) {
+        tx.legalDocuments.forEach(ld => {
+          if (!seenIds.has(ld.id)) {
+            seenIds.add(ld.id);
+            const isCheckedOut = ld.custodyStatus === 'CHECKED_OUT' || ld.status === 'Checked Out' || ld.custody?.status === 'CHECKED_OUT';
+            combined.push({
+              id: ld.id,
+              documentId: ld.documentNumber || `LD-${ld.id.slice(0, 8)}`,
+              documentName: `${ld.documentName} [Ref: ${ld.documentNumber || tx.transactionNumber}]`,
+              dateUploaded: ld.receivedDate ? new Date(ld.receivedDate).toISOString().split('T')[0] : defaultDate,
+              filePath: '',
+              status: isCheckedOut ? 'Checked Out' : 'Approved',
+              uploadedBy: ld.custody?.custodianName || 'Legal Admin',
+              client: partyNames,
+              dateOfRegistration: ld.receivedDate ? new Date(ld.receivedDate).toISOString().split('T')[0] : defaultDate,
+              placeOfHolding: ld.custody?.location || ld.location || placeOfHolding
+            });
+          }
+        });
+      }
+    });
+
+    return combined;
+  }, [documents, transactions]);
 
   // Interval synchronization flag
   const [syncing, setSyncing] = useState(false);
@@ -70,8 +114,9 @@ export default function App() {
         "X-Operator-Role": user?.role || "user"
       };
 
-      const [docsRes, checksRes, usersRes, retRes, notRes, polRes] = await Promise.all([
+      const [docsRes, txsRes, checksRes, usersRes, retRes, notRes, polRes] = await Promise.all([
         fetch("/api/documents", { headers }),
+        fetch("/api/transactions", { headers }),
         fetch("/api/checkouts", { headers }),
         fetch("/api/users", { headers }),
         fetch("/api/returns", { headers }),
@@ -79,8 +124,18 @@ export default function App() {
         fetch("/api/policies", { headers })
       ]);
 
-      const [docs, checks, userItems, returnItems, notifyItems, policyData] = await Promise.all([
+      if (txsRes.status === 401 || docsRes.status === 401) {
+        console.warn("Session token expired or invalid. Resetting authentication...");
+        localStorage.removeItem("bcd_token");
+        localStorage.removeItem("bcd_user");
+        setToken(null);
+        setUser(null);
+        return;
+      }
+
+      const [docs, txs, checks, userItems, returnItems, notifyItems, policyData] = await Promise.all([
         docsRes.json(),
+        txsRes.json(),
         checksRes.json(),
         usersRes.json(),
         retRes.json(),
@@ -88,8 +143,9 @@ export default function App() {
         polRes.json()
       ]);
 
-      if (docsRes.ok) setDocuments(docs);
-      if (checksRes.ok) setCheckouts(checks);
+      if (docsRes.ok) setDocuments(Array.isArray(docs) ? docs : (docs.data || []));
+      if (txsRes.ok) setTransactions(Array.isArray(txs) ? txs : (txs.data || txs.transactions || []));
+      if (checksRes.ok) setCheckouts(Array.isArray(checks) ? checks : (checks.data || []));
       if (usersRes.ok) {
         setUsers(userItems);
         const freshUser = userItems.find((u: User) => u.email === user?.email);
@@ -113,10 +169,8 @@ export default function App() {
   useEffect(() => {
     if (token) {
       fetchAllData();
-      // Setup live poller to mimic websockets real-time ticker
       const poller = setInterval(fetchAllData, 8000);
 
-      // Connect to Socket.IO Server
       const socket = io(window.location.origin || "http://localhost:5000", {
         auth: { token }
       });
@@ -126,18 +180,15 @@ export default function App() {
       });
 
       socket.on("notification:new", (newNot: Notification) => {
-        // Prepend new notification to state
         setNotifications(prev => [newNot, ...prev]);
-        // Also sync all details since checkouts/documents statuses changed!
         fetchAllData();
 
-        // Native browser desktop notification push
-        if ("Notification" in window && window.Notification.permission === "granted") {
-          new window.Notification(newNot.title, {
-            body: newNot.message,
-            icon: "/logo.png"
-          });
-        }
+        // Custom in-app UI toast notification trigger
+        const toastItem: ToastItem = {
+          ...newNot,
+          toastId: `toast-${Date.now()}-${Math.random()}`
+        };
+        setActiveToasts(prev => [toastItem, ...prev.slice(0, 3)]);
       });
 
       return () => {
@@ -147,12 +198,30 @@ export default function App() {
     }
   }, [token]);
 
+  const triggerToast = (title: string, message: string) => {
+    const toastItem: ToastItem = {
+      id: `toast-${Date.now()}`,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+      status: "unread",
+      toastId: `toast-${Date.now()}-${Math.random()}`
+    };
+    setActiveToasts(prev => [toastItem, ...prev.slice(0, 3)]);
+  };
+
   const handleLoginSuccess = (authenticatedUser: User, authenticatedToken: string) => {
     setUser(authenticatedUser);
     setToken(authenticatedToken);
     localStorage.setItem("bcd_user", JSON.stringify(authenticatedUser));
     localStorage.setItem("bcd_token", authenticatedToken);
     setActiveTab("dashboard");
+
+    if ("Notification" in window && window.Notification.permission === "default") {
+      window.Notification.requestPermission();
+    }
+
+    triggerToast("Sign-In Successful", `Welcome back, ${authenticatedUser.name}! Session established.`);
   };
 
   const handleLogout = async () => {
@@ -160,7 +229,19 @@ export default function App() {
       isOpen: true,
       title: "Confirm Sign Out",
       message: "Verify: Are you sure you want to sign out of MITCON Credentia Secure Vault?",
-      onConfirm: () => {
+      onConfirm: async () => {
+        try {
+          await fetch("/api/auth/logout", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ name: user?.name, email: user?.email })
+          }).catch(() => null);
+        } catch (e) {
+          // ignore network errors on logout
+        }
         setUser(null);
         setToken(null);
         localStorage.removeItem("bcd_user");
@@ -173,7 +254,9 @@ export default function App() {
 
   const notifyMarkRead = async (id: string) => {
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: "PUT" });
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      await fetch(`/api/notifications/${id}/read`, { method: "PUT", headers });
       fetchAllData();
     } catch (e) {
       console.error(e);
@@ -182,7 +265,9 @@ export default function App() {
 
   const notifyClearAll = async () => {
     try {
-      await fetch("/api/notifications/clear-all", { method: "POST" });
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      await fetch("/api/notifications/clear-all", { method: "POST", headers });
       fetchAllData();
     } catch (e) {
       console.error(e);
@@ -194,7 +279,6 @@ export default function App() {
     setActiveTab("checkouts");
   };
 
-  // If unauthenticated, redirect direct to secure login screen
   if (!user || !token) {
     return (
       <LoginPage
@@ -222,7 +306,6 @@ export default function App() {
           {/* PRIVILEGED USER INFO PROFILE & NOTIFICATIONS & LOGOUT */}
           <div className="flex items-center gap-4 text-xs font-medium">
 
-            {/* Real-time sync ticker */}
             <button
               onClick={fetchAllData}
               disabled={syncing}
@@ -232,26 +315,23 @@ export default function App() {
               <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin text-amber-400" : ""}`} />
             </button>
 
-            {/* Notification drop-down center component */}
             <NotificationCenter
               notifications={notifications}
               onMarkRead={notifyMarkRead}
               onClearAll={notifyClearAll}
             />
 
-            {/* User session Profile Box */}
             <div className="hidden md:flex flex-col items-end border-l border-slate-800 pl-4 h-9 justify-center">
               <span className="text-slate-100 font-bold leading-tight">{user.name}</span>
               <span className={`text-[9px] uppercase font-bold text-right px-1.5 py-0.2 rounded mt-0.5 ${user.role === "super-admin" ? "bg-amber-500 text-slate-950" :
-                  user.role === "admin" ? "bg-blue-600/10 text-blue-400" :
-                    user.role === "developer" ? "bg-purple-600/10 text-purple-400" :
-                      "bg-slate-700 text-slate-300"
+                user.role === "admin" ? "bg-blue-600/10 text-blue-400" :
+                  user.role === "others" ? "bg-purple-600/10 text-purple-400" :
+                    "bg-slate-700 text-slate-300"
                 }`}>
-                {user.role === "super-admin" ? "🔑 Super Admin Override" : user.role}
+                {user.role === "super-admin" ? "Super Admin Override" : user.role}
               </span>
             </div>
 
-            {/* Force Sign-Out */}
             <button
               onClick={handleLogout}
               className="px-3 py-2 bg-slate-800 hover:bg-rose-950 hover:text-rose-200 border border-slate-700/50 hover:border-rose-900 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-slate-400"
@@ -279,12 +359,12 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab("repo")}
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${activeTab === "repo" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            onClick={() => setActiveTab("legal")}
+            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${activeTab === "legal" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               }`}
           >
-            <FolderOpen className="w-4 h-4 shrink-0" />
-            <span>Vault Repository</span>
+            <FileCheck className="w-4 h-4 shrink-0" />
+            <span>Legal Documents</span>
           </button>
 
           <button
@@ -296,15 +376,13 @@ export default function App() {
             <span>Checkouts & Returns</span>
           </button>
 
-
-
           <button
             onClick={() => setActiveTab("users")}
             className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${activeTab === "users" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               }`}
           >
             <Sliders className="w-4 h-4 shrink-0" />
-            <span>Roles & Security custom</span>
+            <span>Roles & Security</span>
           </button>
 
           <button
@@ -315,7 +393,6 @@ export default function App() {
             <FileBarChart className="w-4 h-4 shrink-0" />
             <span>Compliance Reports</span>
           </button>
-
 
         </div>
       </nav>
@@ -328,33 +405,31 @@ export default function App() {
             documents={documents}
             checkouts={checkouts}
             users={users}
+            transactions={transactions}
             onNavigate={setActiveTab}
           />
         )}
 
-        {activeTab === "repo" && (
-          <RepoManager
-            documents={documents}
-            currentUser={user}
+        {activeTab === "legal" && (
+          <LegalDocumentManager
+            transactions={transactions}
+            currentUser={user || { id: 'anon', name: 'User', email: '', role: 'user', createdAt: '', status: 'active' }}
             onRefresh={fetchAllData}
-            onSelectForCheckout={handleSelectDocForCheckout}
           />
         )}
 
         {activeTab === "checkouts" && (
           <CheckoutReturn
-            documents={documents}
+            documents={allSelectableDocuments}
             checkouts={checkouts}
             users={users}
-            currentUser={user}
+            currentUser={user || { id: 'anon', name: 'User', email: '', role: 'user', createdAt: '', status: 'active' }}
             onRefresh={fetchAllData}
             selectedDocForCheckout={selectedDocForCheckout}
             onClearSelectedDoc={() => setSelectedDocForCheckout(null)}
             onNavigate={setActiveTab}
           />
         )}
-
-
 
         {activeTab === "users" && (
           <UserManager
@@ -379,9 +454,9 @@ export default function App() {
             checkouts={checkouts}
             users={users}
             returns={returns}
+            transactions={transactions}
           />
         )}
-
 
       </main>
 
@@ -394,10 +469,8 @@ export default function App() {
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm animate-fade-in">
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl relative overflow-hidden dark-glass transform scale-100 transition-all duration-200">
-            {/* Background design accents */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full filter blur-xl pointer-events-none" />
-            
-            {/* Header info */}
+
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
                 <LogOut className="w-5 h-5" />
@@ -408,12 +481,10 @@ export default function App() {
               </div>
             </div>
 
-            {/* Message content */}
             <p className="text-xs text-slate-300 mb-6 leading-relaxed">
               {confirmModal.message}
             </p>
 
-            {/* Actions */}
             <div className="flex items-center justify-end gap-2.5">
               <button
                 type="button"
@@ -434,7 +505,13 @@ export default function App() {
         </div>
       )}
 
-    </div>
+      {/* CUSTOM FLOATING IN-APP TOAST NOTIFICATION CONTAINER */}
+      <ToastNotificationContainer
+        toasts={activeToasts}
+        onDismiss={(id) => setActiveToasts(prev => prev.filter(t => t.toastId !== id))}
+        onNavigateToReports={() => setActiveTab("reports")}
+      />
 
+    </div>
   );
 }

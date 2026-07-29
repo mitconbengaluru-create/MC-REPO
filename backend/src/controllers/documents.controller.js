@@ -208,7 +208,9 @@ export class DocumentsController {
   async softDeleteDocument(req, res, next) {
     try {
       const { id } = req.params;
-      await documentService.softDeleteDocument(id);
+      const reason = req.headers['x-deletion-reason'] || req.body?.reason || '';
+      const userId = req.user?.id;
+      await documentService.softDeleteDocument(id, reason, userId);
 
       res.status(200).json({
         success: true,

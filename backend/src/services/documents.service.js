@@ -383,12 +383,13 @@ export class DocumentService {
   /**
    * Soft-delete a document record.
    */
-  async softDeleteDocument(id) {
+  async softDeleteDocument(id, reason = '', userId = null) {
     const doc = await documentRepository.findById(id);
     if (!doc) throw new DocumentServiceError('Document not found.', 'DOCUMENT_NOT_FOUND');
 
     if (doc.isDeleted) return DocumentResponseDto.fromRecord(doc);
 
+    console.log(`[Audit Log - Delete Document] Document ${id} (${doc.name}) deleted. Reason: "${reason}". Operator ID: ${userId || 'N/A'}`);
     const updated = await documentRepository.softDelete(id);
     return DocumentResponseDto.fromRecord(updated);
   }
