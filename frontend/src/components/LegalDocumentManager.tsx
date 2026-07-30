@@ -18,6 +18,22 @@ interface LegalDocumentManagerProps {
   onRefresh: () => void;
 }
 
+export interface LegalDocFormEntry {
+  docName: string;
+  docType: DocumentType;
+  docNumber: string;
+  docCategory: string;
+  docDescription: string;
+  docStatus: DocumentStatus;
+  custodianName: string;
+  department: string;
+  location: string;
+  originalAvailable: boolean;
+  numberOfOriginalSets: number;
+  receivedDate: string;
+  custodyStatus: CustodyStatus;
+}
+
 export default function LegalDocumentManager({
   transactions,
   currentUser,
@@ -28,11 +44,13 @@ export default function LegalDocumentManager({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
+  const [companyFilter, setCompanyFilter] = useState<string>('ALL');
   const [custodyFilter, setCustodyFilter] = useState<string>('ALL');
   const [scanFilter, setScanFilter] = useState<string>('ALL');
   const [expiringFilter, setExpiringFilter] = useState<boolean>(false);
 
   const resetFilters = () => {
+    setCompanyFilter('ALL');
     setStatusFilter('ALL');
     setTypeFilter('ALL');
     setCustodyFilter('ALL');
@@ -40,21 +58,30 @@ export default function LegalDocumentManager({
     setExpiringFilter(false);
   };
 
+  // Derive unique company names for quick keyword filter dropdown
+  const companyOptions = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach(tx => {
+      tx.parties?.forEach(p => {
+        if (p.name?.trim()) set.add(p.name.trim());
+      });
+    });
+    return Array.from(set).sort();
+  }, [transactions]);
+
   // Sorting and Pagination
-  const [sortField, setSortField] = useState<string>('updatedAt');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<string>('documentName');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-
-
   // Column Visibility
   const [visibleColumns, setVisibleColumns] = useState({
-    transactionNumber: true,
-    documentNumber: true,
     documentName: true,
-    documentType: true,
     company: true,
+    documentNumber: true,
+    documentType: true,
+    transactionNumber: true,
     borrower: true,
     trustee: true,
     status: true,
@@ -76,8 +103,6 @@ export default function LegalDocumentManager({
   const [deleteTargetTx, setDeleteTargetTx] = useState<{ id: string; txNumber: string; docName: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
-
   // Form State
   const [formData, setFormData] = useState<{
     id?: string;
@@ -92,6 +117,7 @@ export default function LegalDocumentManager({
     status: TransactionStatus;
     remarks: string;
     parties: Party[];
+    legalDocuments: LegalDocFormEntry[];
     docName: string;
     docType: DocumentType;
     docNumber: string;
@@ -123,6 +149,23 @@ export default function LegalDocumentManager({
     parties: [
       { partyType: 'COMPANY', name: '', address: '', email: '', phone: '', remarks: '' },
     ],
+    legalDocuments: [
+      {
+        docName: '',
+        docType: 'AGREEMENT',
+        docNumber: '',
+        docCategory: 'Credit Documentation',
+        docDescription: 'Original executed document set',
+        docStatus: 'ACTIVE',
+        custodianName: currentUser.name || 'Safe Custody Officer',
+        department: 'Legal & Secretarial',
+        location: 'Main Safe Vault, Level 2',
+        originalAvailable: true,
+        numberOfOriginalSets: 1,
+        receivedDate: new Date().toISOString().split('T')[0],
+        custodyStatus: 'IN_SAFE'
+      }
+    ],
     docName: '',
     docType: 'AGREEMENT',
     docNumber: '',
@@ -145,6 +188,7 @@ export default function LegalDocumentManager({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [scannedFilesMap, setScannedFilesMap] = useState<Record<number, File[]>>({});
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
 
   // RBAC Permission Check
@@ -282,6 +326,11 @@ export default function LegalDocumentManager({
         row.borrower.toLowerCase().includes(term) ||
         row.custodian.toLowerCase().includes(term);
 
+      // Company keyword filter
+      const matchesCompany =
+        companyFilter === 'ALL' ||
+        row.company.toLowerCase().includes(companyFilter.toLowerCase());
+
       // Status filter
       const matchesStatus = statusFilter === 'ALL' || row.status === statusFilter;
 
@@ -300,7 +349,7 @@ export default function LegalDocumentManager({
       // Expiring filter
       const matchesExpiring = !expiringFilter || row.isExpiring;
 
-      return matchesSearch && matchesStatus && matchesType && matchesScan && matchesCustody && matchesExpiring;
+      return matchesSearch && matchesCompany && matchesStatus && matchesType && matchesScan && matchesCustody && matchesExpiring;
     }).sort((a, b) => {
       let valA: any = (a as any)[sortField] || '';
       let valB: any = (b as any)[sortField] || '';
@@ -311,7 +360,7 @@ export default function LegalDocumentManager({
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [tableRows, searchTerm, statusFilter, typeFilter, scanFilter, custodyFilter, expiringFilter, sortField, sortDirection]);
+  }, [tableRows, searchTerm, companyFilter, statusFilter, typeFilter, scanFilter, custodyFilter, expiringFilter, sortField, sortDirection]);
 
   // Paginated Rows
   const paginatedRows = useMemo(() => {
@@ -340,6 +389,23 @@ export default function LegalDocumentManager({
         { partyType: 'COMPANY', name: 'MITCON Credentia Trustees', address: 'Mumbai', email: 'corporate@mitconindia.com', phone: '', remarks: '' },
         { partyType: 'BORROWER', name: '', address: '', email: '', phone: '', remarks: '' }
       ],
+      legalDocuments: [
+        {
+          docName: '',
+          docType: 'AGREEMENT',
+          docNumber: `DOC-${Math.floor(100000 + Math.random() * 900000)}`,
+          docCategory: 'Credit Agreement',
+          docDescription: 'Original executed document set',
+          docStatus: 'ACTIVE',
+          custodianName: currentUser.name || 'Custody Manager',
+          department: 'Legal & Vault Compliance',
+          location: 'Vault A, Locker 4',
+          originalAvailable: true,
+          numberOfOriginalSets: 1,
+          receivedDate: new Date().toISOString().split('T')[0],
+          custodyStatus: 'IN_SAFE',
+        }
+      ],
       docName: '',
       docType: 'AGREEMENT',
       docNumber: `DOC-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -362,6 +428,7 @@ export default function LegalDocumentManager({
     });
     setFormErrors({});
     setUploadFiles([]);
+    setScannedFilesMap({});
     setAttachmentFiles([]);
     setIsEditing(false);
     setActiveFormTab('tx');
@@ -411,8 +478,11 @@ export default function LegalDocumentManager({
   };
 
   // Open Details Modal
-  const handleViewDetails = (tx: Transaction) => {
+  const [selectedDocDetails, setSelectedDocDetails] = useState<{ tx: Transaction; doc?: LegalDocument } | null>(null);
+  const handleViewDetails = (tx: Transaction, doc?: LegalDocument) => {
+    const targetDoc = doc || tx.legalDocuments?.[0];
     setSelectedTx(tx);
+    setSelectedDocDetails({ tx, doc: targetDoc });
     setShowDetailsModal(true);
   };
 
@@ -420,32 +490,26 @@ export default function LegalDocumentManager({
   const validateForm = () => {
     const errors: Record<string, string> = {};
 
-    if (!formData.transactionNumber.trim()) {
-      errors.transactionNumber = 'Transaction number is required.';
-    } else {
-      // Check duplicate transaction number (if creating)
-      if (!isEditing) {
-        const dup = transactions.find(
-          (t) => t.transactionNumber.toLowerCase() === formData.transactionNumber.trim().toLowerCase()
-        );
-        if (dup) errors.transactionNumber = 'Transaction number already registered in database.';
-      }
+    const firstPartyName = formData.parties[0]?.name?.trim();
+    if (!firstPartyName) {
+      errors.companyName = 'At least one primary Party Name is required in Section 2.';
+      errors.submit = 'Please enter a Company / Party Name in Section 2 (Parties).';
+      setActiveFormTab('parties');
+      setFormErrors(errors);
+      return false;
     }
 
-    if (!formData.docName.trim()) {
-      errors.docName = 'Legal Document Name is required.';
+    const firstDocName = formData.legalDocuments?.[0]?.docName?.trim() || formData.docName?.trim();
+    if (!firstDocName) {
+      errors.docName = 'Legal Document Name is required in Section 3.';
+      errors.submit = 'Please enter a Legal Document Name in Section 3 (Legal Document).';
+      setActiveFormTab('docs');
+      setFormErrors(errors);
+      return false;
     }
 
-    if (!formData.parties[0]?.name.trim()) {
-      errors.companyName = 'At least one primary Party Name is required.';
-    }
-
-    if (!formData.custodianName.trim()) {
-      errors.custodianName = 'Custodian Name is required.';
-    }
-
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    setFormErrors({});
+    return true;
   };
 
   // Submit Transaction Form
@@ -455,16 +519,17 @@ export default function LegalDocumentManager({
 
     setIsSubmitting(true);
     try {
+      const autoTxNumber = formData.transactionNumber.trim() || `TX-${Date.now()}`;
       const payload = {
-        transactionNumber: formData.transactionNumber.trim(),
-        transactionType: formData.transactionType.trim(),
+        transactionNumber: autoTxNumber,
+        transactionType: formData.transactionType.trim() || 'Legal Transaction',
         executionDate: formData.executionDate ? new Date(formData.executionDate).toISOString() : null,
         executionPlace: formData.executionPlace.trim(),
         transactionValue: formData.transactionValue ? parseFloat(formData.transactionValue) : null,
-        currency: formData.currency,
+        currency: formData.currency || 'INR',
         validityStart: formData.validityStart ? new Date(formData.validityStart).toISOString() : null,
         validityEnd: formData.validityEnd ? new Date(formData.validityEnd).toISOString() : null,
-        status: formData.status,
+        status: formData.status || 'DRAFT',
         remarks: formData.remarks,
         parties: formData.parties.filter((p) => p.name.trim().length > 0),
       };
@@ -492,95 +557,120 @@ export default function LegalDocumentManager({
 
       const createdTx: Transaction = responseData.data || responseData.transaction || responseData;
 
-      // Add Legal Document under created Transaction
-      if (createdTx && createdTx.id) {
-        const docPayload = {
-          documentType: formData.docType,
-          documentName: formData.docName.trim(),
-          documentNumber: formData.docNumber.trim(),
-          category: formData.docCategory.trim(),
-          description: formData.docDescription.trim(),
-          status: formData.docStatus,
-          custodianName: formData.custodianName.trim(),
-          department: formData.department.trim(),
-          location: formData.location.trim(),
-          originalAvailable: formData.originalAvailable,
-          numberOfOriginalSets: formData.numberOfOriginalSets,
-          receivedDate: formData.receivedDate ? new Date(formData.receivedDate).toISOString() : null,
-          custodyStatus: formData.custodyStatus,
-        };
+      // Add Legal Documents under created Transaction
+      const docsToProcess = (formData.legalDocuments && formData.legalDocuments.length > 0)
+        ? formData.legalDocuments
+        : [{
+            docName: formData.docName.trim(),
+            docType: formData.docType || 'OTHERS',
+            docNumber: formData.docNumber.trim(),
+            docCategory: formData.docCategory.trim(),
+            docDescription: formData.docDescription.trim(),
+            docStatus: formData.docStatus || 'DRAFT',
+            custodianName: formData.custodianName.trim(),
+            department: formData.department.trim(),
+            location: formData.location.trim(),
+            originalAvailable: formData.originalAvailable,
+            numberOfOriginalSets: formData.numberOfOriginalSets || 1,
+            receivedDate: formData.receivedDate ? new Date(formData.receivedDate).toISOString() : new Date().toISOString(),
+            custodyStatus: formData.custodyStatus || 'IN_SAFE',
+          }];
 
-        const docRes = await fetch(`/api/transactions/${createdTx.id}/documents`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeader,
-            'X-Operator-Name': currentUser.name,
-            'X-Operator-Role': currentUser.role,
-          },
-          body: JSON.stringify(docPayload),
-        });
+      if (createdTx && createdTx.id && docsToProcess.length > 0) {
+        for (let docIdx = 0; docIdx < docsToProcess.length; docIdx++) {
+          const docItem = docsToProcess[docIdx];
+          if (!docItem.docName.trim()) continue;
 
-        const createdDocData = await docRes.json();
-        const createdDoc: LegalDocument = createdDocData.data || createdDocData.document || createdDocData;
+          const autoDocNumber = docItem.docNumber.trim() || `DOC-${Date.now()}-${docIdx}`;
+          const docPayload = {
+            documentType: docItem.docType || 'OTHERS',
+            documentName: docItem.docName.trim(),
+            documentNumber: autoDocNumber,
+            category: docItem.docCategory.trim() || 'General',
+            description: docItem.docDescription.trim(),
+            status: docItem.docStatus || 'DRAFT',
+            custodianName: formData.custodianName.trim() || docItem.custodianName.trim() || 'Safe Custody Officer',
+            department: formData.department.trim() || docItem.department.trim() || 'Legal & Vault Compliance',
+            location: formData.location.trim() || docItem.location.trim() || 'Main Safe Vault',
+            originalAvailable: formData.originalAvailable !== undefined ? formData.originalAvailable : docItem.originalAvailable,
+            numberOfOriginalSets: formData.numberOfOriginalSets || docItem.numberOfOriginalSets || 1,
+            receivedDate: formData.receivedDate ? new Date(formData.receivedDate).toISOString() : new Date().toISOString(),
+            custodyStatus: formData.custodyStatus || docItem.custodyStatus || 'IN_SAFE',
+          };
 
-        // Add Signatories
-        if (createdDoc && createdDoc.id && formData.signatories.length > 0) {
-          for (const sig of formData.signatories) {
-            if (sig.name.trim()) {
-              await fetch(`/api/transactions/documents/${createdDoc.id}/signatories`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...authHeader,
-                  'X-Operator-Name': currentUser.name,
-                  'X-Operator-Role': currentUser.role,
-                },
-                body: JSON.stringify({
-                  name: sig.name,
-                  designation: sig.designation,
-                  organization: sig.organization,
-                  signed: sig.signed,
-                  signingDate: sig.signingDate ? new Date(sig.signingDate).toISOString() : null,
-                  remarks: sig.remarks,
-                }),
-              });
-            }
-          }
-        }
-
-        // Handle Scanned Document Uploads if present
-        if (createdDoc && createdDoc.id && uploadFiles.length > 0) {
-          const fileData = new FormData();
-          uploadFiles.forEach((file) => fileData.append('files', file));
-
-          await fetch(`/api/transactions/documents/${createdDoc.id}/scanned`, {
+          const docRes = await fetch(`/api/transactions/${createdTx.id}/documents`, {
             method: 'POST',
             headers: {
+              'Content-Type': 'application/json',
               ...authHeader,
               'X-Operator-Name': currentUser.name,
               'X-Operator-Role': currentUser.role,
             },
-            body: fileData,
+            body: JSON.stringify(docPayload),
           });
-        }
 
-        // Handle Supporting Document Attachments
-        if (createdDoc && createdDoc.id && attachmentFiles.length > 0) {
-          for (const attFile of attachmentFiles) {
-            const attData = new FormData();
-            attData.append('file', attFile);
-            attData.append('description', 'Supporting Document Annexure');
+          const createdDocData = await docRes.json();
+          const createdDoc: LegalDocument = createdDocData.data || createdDocData.document || createdDocData;
 
-            await fetch(`/api/transactions/documents/${createdDoc.id}/attachments`, {
+          // Add Signatories
+          if (createdDoc && createdDoc.id && formData.signatories.length > 0) {
+            for (const sig of formData.signatories) {
+              if (sig.name.trim()) {
+                await fetch(`/api/transactions/documents/${createdDoc.id}/signatories`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeader,
+                    'X-Operator-Name': currentUser.name,
+                    'X-Operator-Role': currentUser.role,
+                  },
+                  body: JSON.stringify({
+                    name: sig.name,
+                    designation: sig.designation,
+                    organization: sig.organization,
+                    signed: sig.signed,
+                    signingDate: sig.signingDate ? new Date(sig.signingDate).toISOString() : null,
+                    remarks: sig.remarks,
+                  }),
+                });
+              }
+            }
+          }
+
+          // Handle Scanned Document Uploads bound to this Document Name Key
+          const mappedScannedFiles = scannedFilesMap[docIdx] || (docIdx === 0 ? uploadFiles : []);
+          if (createdDoc && createdDoc.id && mappedScannedFiles.length > 0) {
+            const fileData = new FormData();
+            mappedScannedFiles.forEach((file) => fileData.append('files', file));
+
+            await fetch(`/api/transactions/documents/${createdDoc.id}/scanned`, {
               method: 'POST',
               headers: {
                 ...authHeader,
                 'X-Operator-Name': currentUser.name,
                 'X-Operator-Role': currentUser.role,
               },
-              body: attData,
+              body: fileData,
             });
+          }
+
+          // Handle Supporting Document Attachments
+          if (createdDoc && createdDoc.id && attachmentFiles.length > 0) {
+            for (const attFile of attachmentFiles) {
+              const attData = new FormData();
+              attData.append('file', attFile);
+              attData.append('description', 'Supporting Document Annexure');
+
+              await fetch(`/api/transactions/documents/${createdDoc.id}/attachments`, {
+                method: 'POST',
+                headers: {
+                  ...authHeader,
+                  'X-Operator-Name': currentUser.name,
+                  'X-Operator-Role': currentUser.role,
+                },
+                body: attData,
+              });
+            }
           }
         }
       }
@@ -821,52 +911,90 @@ export default function LegalDocumentManager({
                 </button>
               </div>
 
-              {transactions.length === 0 ? (
-                <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
-                  <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-medium text-slate-500">No legal document transactions registered yet.</p>
-                  {canModify && (
-                    <button
-                      onClick={handleOpenCreateModal}
-                      className="mt-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg"
-                    >
-                      Register First Legal Document
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {transactions.slice(0, 5).map((tx) => (
-                    <div key={tx.id} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 p-2 rounded-xl transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-xs shrink-0">
-                          TX
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900">{tx.transactionNumber}</span>
-                            {getStatusBadge(tx.status)}
-                          </div>
-                          <p className="text-[11px] text-slate-500 font-medium">{tx.transactionType}</p>
-                          <p className="text-[10px] text-slate-400">
-                            Execution: {tx.executionDate ? new Date(tx.executionDate).toLocaleDateString('en-IN') : 'N/A'} • {tx.parties?.find(p => p.partyType === 'COMPANY')?.name || 'MITCON Credentia'}
-                          </p>
-                        </div>
-                      </div>
+              {(() => {
+                const flattenedDocs: Array<{ tx: Transaction; doc: LegalDocument; companyName: string }> = [];
+                transactions.forEach(tx => {
+                  const companyName = tx.parties?.find(p => p.partyType === 'COMPANY' || p.partyType === 'LENDER')?.name || 'N/A';
+                  if (tx.legalDocuments && tx.legalDocuments.length > 0) {
+                    tx.legalDocuments.forEach(doc => {
+                      flattenedDocs.push({ tx, doc, companyName });
+                    });
+                  } else {
+                    flattenedDocs.push({
+                      tx,
+                      doc: { id: tx.id, transactionId: tx.id, documentType: 'AGREEMENT', documentName: tx.transactionType, currentVersion: 1, status: 'ACTIVE', createdAt: tx.createdAt, updatedAt: tx.updatedAt } as LegalDocument,
+                      companyName
+                    });
+                  }
+                });
 
-                      <div className="flex items-center gap-2">
+                if (flattenedDocs.length === 0) {
+                  return (
+                    <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
+                      <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs font-medium text-slate-500">No legal document transactions registered yet.</p>
+                      {canModify && (
                         <button
-                          onClick={() => handleViewDetails(tx)}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1"
+                          onClick={handleOpenCreateModal}
+                          className="mt-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg"
                         >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Details</span>
+                          Register First Legal Document
                         </button>
-                      </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                }
+
+                return (
+                  <div className="divide-y divide-slate-100">
+                    {flattenedDocs.slice(0, 10).map(({ tx, doc, companyName }, idx) => {
+                      const hasValidRef = tx.transactionNumber && tx.transactionNumber !== 'NA' && tx.transactionNumber.trim() !== '';
+
+                      return (
+                        <div key={`${tx.id}-${doc.id}`} className="py-3 flex items-center justify-between gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200/80 text-slate-500 font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                              {String(idx + 1).padStart(2, '0')}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-extrabold text-slate-900">{doc.documentName}</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200" title="Company Name">
+                                  {companyName}
+                                </span>
+                                {doc.documentNumber && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono text-amber-800 bg-amber-50 border border-amber-200" title="Document Serial Number">
+                                    {doc.documentNumber}
+                                  </span>
+                                )}
+                                {hasValidRef && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono text-slate-500 bg-slate-100 border border-slate-200" title="Subsidiary Reference">
+                                    Ref: {tx.transactionNumber}
+                                  </span>
+                                )}
+                                {getStatusBadge(doc.status || tx.status)}
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Type: {doc.documentType} | Custody: {doc.custody?.status || 'IN_SAFE'} | Location: {doc.custody?.location || 'Main Vault'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(tx, doc)}
+                              className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View Details</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* QUICK CUSTODY STATS & ACTIONS SIDEBAR */}
@@ -920,7 +1048,7 @@ export default function LegalDocumentManager({
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search transaction no, document name, company, custodian..."
+                placeholder="Search by Company Name (Keyword), Doc Name, Doc Number, Tx Number..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
@@ -928,6 +1056,18 @@ export default function LegalDocumentManager({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs font-semibold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                title="Filter documents by Company Name keyword"
+              >
+                <option value="ALL">All Companies (Keyword)</option>
+                {companyOptions.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -1007,22 +1147,45 @@ export default function LegalDocumentManager({
                 <tr className="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider select-none">
 
 
-                  {visibleColumns.transactionNumber && (
+                  {visibleColumns.company && (
                     <th
-                      onClick={() => { setSortField('transactionNumber'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}
+                      onClick={() => { setSortField('company'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}
                       className="p-3.5 cursor-pointer hover:text-amber-400"
                     >
                       <div className="flex items-center gap-1">
-                        <span>Tx Number</span>
+                        <span>Company Name</span>
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                  )}
+
+                  {visibleColumns.documentName && (
+                    <th
+                      onClick={() => { setSortField('documentName'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}
+                      className="p-3.5 cursor-pointer hover:text-amber-400"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Doc Name</span>
                         <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </th>
                   )}
 
                   {visibleColumns.documentNumber && <th className="p-3.5">Doc Number</th>}
-                  {visibleColumns.documentName && <th className="p-3.5">Doc Name</th>}
                   {visibleColumns.documentType && <th className="p-3.5">Type</th>}
-                  {visibleColumns.company && <th className="p-3.5">Company</th>}
+
+                  {visibleColumns.transactionNumber && (
+                    <th
+                      onClick={() => { setSortField('transactionNumber'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}
+                      className="p-3.5 cursor-pointer hover:text-amber-400"
+                    >
+                      <div className="flex items-center gap-1 text-slate-400 font-normal">
+                        <span>Tx Number (Subsidiary)</span>
+                        <ArrowUpDown className="w-3 h-3" />
+                      </div>
+                    </th>
+                  )}
+
                   {visibleColumns.borrower && <th className="p-3.5">Borrower</th>}
                   {visibleColumns.status && <th className="p-3.5">Status</th>}
                   {visibleColumns.custodian && <th className="p-3.5">Custodian</th>}
@@ -1045,14 +1208,16 @@ export default function LegalDocumentManager({
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-all">
 
 
-                      {visibleColumns.transactionNumber && (
-                        <td className="p-3.5 font-bold text-slate-900 font-mono">{row.transactionNumber}</td>
-                      )}
-                      {visibleColumns.documentNumber && (
-                        <td className="p-3.5 text-slate-600 font-mono">{row.documentNumber}</td>
+                      {visibleColumns.company && (
+                        <td className="p-3.5 font-bold text-slate-900">
+                          <span>{row.company}</span>
+                        </td>
                       )}
                       {visibleColumns.documentName && (
                         <td className="p-3.5 font-semibold text-slate-800">{row.documentName}</td>
+                      )}
+                      {visibleColumns.documentNumber && (
+                        <td className="p-3.5 text-slate-600 font-mono">{row.documentNumber}</td>
                       )}
                       {visibleColumns.documentType && (
                         <td className="p-3.5">
@@ -1061,7 +1226,13 @@ export default function LegalDocumentManager({
                           </span>
                         </td>
                       )}
-                      {visibleColumns.company && <td className="p-3.5 text-slate-700">{row.company}</td>}
+                      {visibleColumns.transactionNumber && (
+                        <td className="p-3.5 font-mono">
+                          <span className="px-2 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100 border border-slate-200" title="Subsidiary Transaction Number">
+                            Ref: {row.transactionNumber}
+                          </span>
+                        </td>
+                      )}
                       {visibleColumns.borrower && <td className="p-3.5 text-slate-600">{row.borrower}</td>}
                       {visibleColumns.status && <td className="p-3.5">{getStatusBadge(row.status)}</td>}
                       {visibleColumns.custodian && <td className="p-3.5 text-slate-600">{row.custodian}</td>}
@@ -1093,7 +1264,7 @@ export default function LegalDocumentManager({
                       <td className="p-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => handleViewDetails(row.tx)}
+                            onClick={() => handleViewDetails(row.tx, row.doc)}
                             className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[11px] font-semibold transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Eye className="w-3 h-3" />
@@ -1422,75 +1593,172 @@ export default function LegalDocumentManager({
 
               {/* SECTION 3: LEGAL DOCUMENTS */}
               {activeFormTab === 'docs' && (
-                <div className="space-y-4 animate-fade-in">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Section 3: Legal Document Details</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-6 animate-fade-in">
+                  <div className="flex justify-between items-center">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Document Name *</label>
-                      <input
-                        type="text"
-                        value={formData.docName}
-                        onChange={(e) => setFormData({ ...formData, docName: e.target.value })}
-                        required
-                        placeholder="Deed of Personal Guarantee / Loan Agreement"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
-                      />
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Section 3: Legal Document Details</h4>
+                      <p className="text-[11px] text-slate-500">Register one or multiple legal documents under this transaction</p>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Document Type *</label>
-                      <select
-                        value={formData.docType}
-                        onChange={(e) => setFormData({ ...formData, docType: e.target.value as DocumentType })}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
-                      >
-                        <option value="AGREEMENT">AGREEMENT</option>
-                        <option value="DEED">DEED</option>
-                        <option value="MORTGAGE">MORTGAGE</option>
-                        <option value="GUARANTEE">GUARANTEE</option>
-                        <option value="RESOLUTION">RESOLUTION</option>
-                        <option value="CERTIFICATE">CERTIFICATE</option>
-                        <option value="LETTER">LETTER</option>
-                        <option value="UNDERTAKING">UNDERTAKING</option>
-                        <option value="OTHERS">OTHERS</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Document Serial Number</label>
-                      <input
-                        type="text"
-                        value={formData.docNumber}
-                        onChange={(e) => setFormData({ ...formData, docNumber: e.target.value })}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
-                      <select
-                        value={formData.docStatus}
-                        onChange={(e) => setFormData({ ...formData, docStatus: e.target.value as DocumentStatus })}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
-                      >
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="DRAFT">DRAFT</option>
-                        <option value="PENDING_REVIEW">PENDING REVIEW</option>
-                        <option value="VERIFIED">VERIFIED</option>
-                        <option value="ARCHIVED">ARCHIVED</option>
-                      </select>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          legalDocuments: [
+                            ...prev.legalDocuments,
+                            {
+                              docName: '',
+                              docType: 'AGREEMENT',
+                              docNumber: `DOC-${Math.floor(100000 + Math.random() * 900000)}`,
+                              docCategory: 'Credit Agreement',
+                              docDescription: 'Original executed document set',
+                              docStatus: 'ACTIVE',
+                              custodianName: currentUser.name || 'Custody Manager',
+                              department: 'Legal & Vault Compliance',
+                              location: 'Vault A, Locker 4',
+                              originalAvailable: true,
+                              numberOfOriginalSets: 1,
+                              receivedDate: new Date().toISOString().split('T')[0],
+                              custodyStatus: 'IN_SAFE',
+                            },
+                          ],
+                        }));
+                      }}
+                      className="px-3.5 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-800 transition-all shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Another Legal Document</span>
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Document Description</label>
-                    <textarea
-                      rows={2}
-                      value={formData.docDescription}
-                      onChange={(e) => setFormData({ ...formData, docDescription: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
-                    />
-                  </div>
+                  {formData.legalDocuments.map((doc, docIdx) => (
+                    <div key={docIdx} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 relative shadow-xs">
+                      <div className="flex justify-between items-center border-b border-slate-200/80 pb-2.5">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-mono">{docIdx + 1}</span>
+                          <span>Legal Document Entry #{docIdx + 1}</span>
+                        </span>
+                        {formData.legalDocuments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                legalDocuments: prev.legalDocuments.filter((_, i) => i !== docIdx),
+                              }));
+                            }}
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Document Name *</label>
+                          <input
+                            type="text"
+                            value={doc.docName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData((prev) => {
+                                const updated = [...prev.legalDocuments];
+                                updated[docIdx] = { ...updated[docIdx], docName: val };
+                                return { ...prev, legalDocuments: updated, docName: docIdx === 0 ? val : prev.docName };
+                              });
+                            }}
+                            required
+                            placeholder="Deed of Personal Guarantee / Loan Agreement"
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Document Type *</label>
+                          <select
+                            value={doc.docType}
+                            onChange={(e) => {
+                              const val = e.target.value as DocumentType;
+                              setFormData((prev) => {
+                                const updated = [...prev.legalDocuments];
+                                updated[docIdx] = { ...updated[docIdx], docType: val };
+                                return { ...prev, legalDocuments: updated, docType: docIdx === 0 ? val : prev.docType };
+                              });
+                            }}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                          >
+                            <option value="AGREEMENT">AGREEMENT</option>
+                            <option value="DEED">DEED</option>
+                            <option value="MORTGAGE">MORTGAGE</option>
+                            <option value="GUARANTEE">GUARANTEE</option>
+                            <option value="RESOLUTION">RESOLUTION</option>
+                            <option value="CERTIFICATE">CERTIFICATE</option>
+                            <option value="LETTER">LETTER</option>
+                            <option value="UNDERTAKING">UNDERTAKING</option>
+                            <option value="OTHERS">OTHERS</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Document Serial Number</label>
+                          <input
+                            type="text"
+                            value={doc.docNumber}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData((prev) => {
+                                const updated = [...prev.legalDocuments];
+                                updated[docIdx] = { ...updated[docIdx], docNumber: val };
+                                return { ...prev, legalDocuments: updated };
+                              });
+                            }}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
+                          <select
+                            value={doc.docStatus}
+                            onChange={(e) => {
+                              const val = e.target.value as DocumentStatus;
+                              setFormData((prev) => {
+                                const updated = [...prev.legalDocuments];
+                                updated[docIdx] = { ...updated[docIdx], docStatus: val };
+                                return { ...prev, legalDocuments: updated };
+                              });
+                            }}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                          >
+                            <option value="ACTIVE">ACTIVE</option>
+                            <option value="DRAFT">DRAFT</option>
+                            <option value="PENDING_REVIEW">PENDING REVIEW</option>
+                            <option value="VERIFIED">VERIFIED</option>
+                            <option value="ARCHIVED">ARCHIVED</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Document Description</label>
+                        <textarea
+                          rows={2}
+                          value={doc.docDescription}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData((prev) => {
+                              const updated = [...prev.legalDocuments];
+                              updated[docIdx] = { ...updated[docIdx], docDescription: val };
+                              return { ...prev, legalDocuments: updated };
+                            });
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1652,33 +1920,57 @@ export default function LegalDocumentManager({
 
               {/* SECTION 6: SCANNED DOCUMENTS */}
               {activeFormTab === 'scans' && (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs text-blue-700 flex items-center gap-2">
-                    <Info className="w-4 h-4 shrink-0 text-blue-500" />
-                    <span>Scanned files act only as reference copies. The system performs NO OCR or AI extraction. All fields are entered manually above.</span>
+                <div className="space-y-5 animate-fade-in">
+                  <div className="p-3.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-xs text-blue-800 flex items-center gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-blue-600" />
+                    <span>Upload scanned files for each legal document. The Document Name acts as the reference key linking the file to the document.</span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Upload Scanned Copies (PDF, Image, DOCX)</label>
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.docx"
-                      onChange={(e) => setUploadFiles(Array.from(e.target.files || []))}
-                      className="w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800"
-                    />
-                  </div>
+                  {formData.legalDocuments.map((doc, docIdx) => {
+                    const keyName = doc.docName.trim() || `Document #${docIdx + 1}`;
+                    const docFiles = scannedFilesMap[docIdx] || [];
 
-                  {uploadFiles.length > 0 && (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Selected Scanned Files ({uploadFiles.length})</p>
-                      {uploadFiles.map((file, i) => (
-                        <div key={i} className="flex justify-between items-center text-xs font-mono text-slate-700">
-                          <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
+                    return (
+                      <div key={docIdx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-900">
+                            Scanned Copy for: <span className="text-amber-800 font-extrabold">{keyName}</span>
+                          </label>
+                          {doc.docNumber && (
+                            <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              Ref Key: {doc.docNumber}
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+
+                        <input
+                          type="file"
+                          multiple
+                          accept=".pdf,.png,.jpg,.jpeg,.docx"
+                          onChange={(e) => {
+                            const selected = Array.from(e.target.files || []);
+                            setScannedFilesMap((prev) => ({
+                              ...prev,
+                              [docIdx]: selected,
+                            }));
+                          }}
+                          className="w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 cursor-pointer"
+                        />
+
+                        {docFiles.length > 0 && (
+                          <div className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">Attached Files for Key: {keyName} ({docFiles.length})</p>
+                            {docFiles.map((file, i) => (
+                              <div key={i} className="flex justify-between items-center text-xs font-mono text-slate-700">
+                                <span className="truncate">{file.name}</span>
+                                <span className="text-[10px] text-slate-400 font-sans">{Math.round(file.size / 1024)} KB</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1750,12 +2042,13 @@ export default function LegalDocumentManager({
                     Cancel
                   </button>
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={(e) => handleSubmitForm(e)}
                     disabled={isSubmitting}
-                    className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                    className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
-                    <span>Save Transaction & Documents</span>
+                    <span>{isSubmitting ? 'Saving Transaction...' : 'Save Transaction & Documents'}</span>
                   </button>
                 </div>
               </div>
@@ -1770,205 +2063,237 @@ export default function LegalDocumentManager({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full my-8 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold font-mono">{selectedTx.transactionNumber}</h3>
-                  <p className="text-xs text-slate-400">{selectedTx.transactionType}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowDetailsModal(false)} className="p-2 text-slate-400 hover:text-white rounded-xl">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            {(() => {
+              const activeDoc = selectedDocDetails?.doc || selectedTx.legalDocuments?.[0];
+              const docName = activeDoc?.documentName || selectedTx.transactionType;
+              const companyName = selectedTx.parties?.find(p => p.partyType === 'COMPANY' || p.partyType === 'LENDER')?.name || 'N/A';
 
-            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-
-              {/* TRANSACTION SUMMARY */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Transaction Summary</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Status</span>
-                    {getStatusBadge(selectedTx.status)}
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Execution Date</span>
-                    <span className="font-semibold text-slate-800">{selectedTx.executionDate ? new Date(selectedTx.executionDate).toLocaleDateString('en-IN') : 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Place of Execution</span>
-                    <span className="font-semibold text-slate-800">{selectedTx.executionPlace || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Transaction Value</span>
-                    <span className="font-semibold text-slate-800">{selectedTx.transactionValue ? `${selectedTx.currency} ${Number(selectedTx.transactionValue).toLocaleString('en-IN')}` : 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* PARTIES */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Parties ({selectedTx.parties?.length || 0})</h4>
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
-                  {selectedTx.parties?.map((p, i) => (
-                    <div key={i} className="p-3 bg-white flex justify-between items-center">
-                      <div>
-                        <span className="font-bold text-slate-900">{p.name}</span>
-                        <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{p.partyType}</span>
+              return (
+                <>
+                  <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                        <FileText className="w-5 h-5" />
                       </div>
-                      <span className="text-slate-500 font-mono">{p.email || p.phone || 'N/A'}</span>
+                      <div>
+                        <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                          <span>{docName}</span>
+                          {activeDoc?.documentNumber && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono text-amber-300 bg-amber-500/20 border border-amber-500/30">
+                              {activeDoc.documentNumber}
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-slate-800 border border-slate-700">
+                            Ref: {selectedTx.transactionNumber}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                          <span>Company: {companyName}</span>
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <button onClick={() => setShowDetailsModal(false)} className="p-2 text-slate-400 hover:text-white rounded-xl cursor-pointer">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
 
-              {/* LEGAL DOCUMENTS & CUSTODY */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Legal Documents ({selectedTx.legalDocuments?.length || 0})</h4>
-                {selectedTx.legalDocuments?.map((doc, i) => (
-                  <div key={i} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <span className="font-bold text-slate-900">{doc.documentName}</span>
-                        <span className="ml-2 font-mono text-slate-500">{doc.documentNumber}</span>
-                      </div>
-                      {getStatusBadge(doc.status)}
-                    </div>
+                  <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
 
-                    <div className="p-3 bg-white border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Custodian</span>
-                        <span className="font-semibold text-slate-800">{doc.custody?.custodianName || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Location</span>
-                        <span className="font-semibold text-slate-800">{doc.custody?.location || 'Main Vault'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Original Available</span>
-                        <span className="font-semibold text-emerald-600">{doc.custody?.originalAvailable ? 'Yes (Physical Set)' : 'No'}</span>
+                    {/* TRANSACTION & COMPANY CONTEXT */}
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                      <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Transaction & Company Context</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Status</span>
+                          {getStatusBadge(activeDoc?.status || selectedTx.status)}
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Execution Date</span>
+                          <span className="font-semibold text-slate-800">{selectedTx.executionDate ? new Date(selectedTx.executionDate).toLocaleDateString('en-IN') : 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Place of Execution</span>
+                          <span className="font-semibold text-slate-800">{selectedTx.executionPlace || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Transaction Value</span>
+                          <span className="font-semibold text-slate-800">{selectedTx.transactionValue ? `${selectedTx.currency} ${Number(selectedTx.transactionValue).toLocaleString('en-IN')}` : 'N/A'}</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* SCANNED COPIES & VERSIONS */}
-                    <div className="pt-2 space-y-3">
-                      <div>
-                        <span className="font-bold text-slate-700 block mb-1.5 text-[11px]">Scanned Copy Attachments</span>
-                        {doc.scannedDocuments && doc.scannedDocuments.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {doc.scannedDocuments.map((scan) => (
-                              <div key={scan.id} className="p-2.5 bg-white border border-slate-200 rounded-xl flex justify-between items-center text-[11px]">
-                                <div className="flex items-center gap-2">
-                                  <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                  <div>
-                                    <span className="font-mono text-slate-900 font-semibold">{scan.originalFileName}</span>
-                                    <span className="text-slate-400 ml-2 font-mono">({(scan.fileSize / 1024).toFixed(1)} KB)</span>
-                                    <p className="text-[10px] text-slate-400">Uploaded {new Date(scan.uploadedDate).toLocaleDateString('en-IN')}</p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                    Scanned Copy
-                                  </span>
-                                  <a
-                                    href={`/api/transactions/scanned/${scan.id}/view?token=${encodeURIComponent(localStorage.getItem("bcd_token") || "")}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-[10px] flex items-center gap-1 transition-all cursor-pointer"
-                                  >
-                                    <Eye className="w-3 h-3" /> View Copy
-                                  </a>
-                                </div>
-                              </div>
-                            ))}
+                    {/* PARTIES */}
+                    <div className="space-y-2">
+                      <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Parties ({selectedTx.parties?.length || 0})</h4>
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                        {selectedTx.parties?.map((p, i) => (
+                          <div key={i} className="p-3 bg-white flex justify-between items-center">
+                            <div>
+                              <span className="font-bold text-slate-900">{p.name}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{p.partyType}</span>
+                            </div>
+                            <span className="text-slate-500 font-mono">{p.email || p.phone || 'N/A'}</span>
                           </div>
-                        ) : (
-                          <span className="text-amber-600 text-[11px] italic block">No scanned document copy uploaded yet.</span>
-                        )}
+                        ))}
                       </div>
+                    </div>
 
-                      {/* SUPPORTING ANNEXURES & LETTERS */}
-                      <div>
-                        <span className="font-bold text-slate-700 block mb-1.5 text-[11px]">Supporting Annexures & Letters</span>
-                        {doc.attachments && doc.attachments.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {doc.attachments.map((att) => (
-                              <div key={att.id} className="p-2.5 bg-white border border-slate-200 rounded-xl flex justify-between items-center text-[11px]">
-                                <div className="flex items-center gap-2">
-                                  <Paperclip className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                  <div>
-                                    <span className="font-mono text-slate-900 font-semibold">{att.originalFileName}</span>
-                                    <span className="text-slate-400 ml-2 font-mono">({(att.fileSize / 1024).toFixed(1)} KB)</span>
-                                    <p className="text-[10px] text-slate-400">{att.attachmentType || 'Supporting Document'} • Uploaded {new Date(att.createdDate).toLocaleDateString('en-IN')}</p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
-                                    Annexure
-                                  </span>
-                                  <a
-                                    href={`/api/transactions/attachments/${att.id}/view?token=${encodeURIComponent(localStorage.getItem("bcd_token") || "")}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-[10px] flex items-center gap-1 transition-all cursor-pointer"
-                                  >
-                                    <Eye className="w-3 h-3" /> View Annexure
-                                  </a>
-                                </div>
-                              </div>
-                            ))}
+                    {/* SPECIFIC INDIVIDUAL LEGAL DOCUMENT DETAILS */}
+                    {activeDoc && (
+                      <div className="space-y-3">
+                        <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Specific Legal Document Details</h4>
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                          <div className="flex justify-between items-center border-b border-slate-200/80 pb-3">
+                            <div>
+                              <span className="text-sm font-extrabold text-slate-900">{activeDoc.documentName}</span>
+                              {activeDoc.documentNumber && (
+                                <span className="ml-2 font-mono text-slate-500">({activeDoc.documentNumber})</span>
+                              )}
+                            </div>
+                            {getStatusBadge(activeDoc.status)}
                           </div>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic block">No supporting annexures attached.</span>
-                        )}
+
+                          <div className="p-3 bg-white border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px]">
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Custodian</span>
+                              <span className="font-semibold text-slate-800">{activeDoc.custody?.custodianName || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Vault Location</span>
+                              <span className="font-semibold text-slate-800">{activeDoc.custody?.location || 'Main Vault'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Original Available</span>
+                              <span className="font-semibold text-emerald-600">{activeDoc.custody?.originalAvailable ? 'Yes (Physical Set)' : 'No'}</span>
+                            </div>
+                          </div>
+
+                          {/* SCANNED COPIES SPECIFIC TO THIS SPECIFIC DOCUMENT */}
+                          <div className="pt-2 space-y-3">
+                            <div>
+                              <span className="font-bold text-slate-800 block mb-2 text-[11px]">
+                                Scanned Copy File for: <span className="text-amber-800 font-bold">{activeDoc.documentName}</span>
+                              </span>
+                              {activeDoc.scannedDocuments && activeDoc.scannedDocuments.length > 0 ? (
+                                <div className="space-y-2">
+                                  {activeDoc.scannedDocuments.map((scan) => (
+                                    <div key={scan.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center text-[11px]">
+                                      <div className="flex items-center gap-2.5">
+                                        <Paperclip className="w-4 h-4 text-emerald-600 shrink-0" />
+                                        <div>
+                                          <span className="font-mono text-slate-900 font-bold">{scan.originalFileName}</span>
+                                          <span className="text-slate-400 ml-2 font-mono">({(scan.fileSize / 1024).toFixed(1)} KB)</span>
+                                          <p className="text-[10px] text-slate-400 mt-0.5">Uploaded {new Date(scan.uploadedDate).toLocaleDateString('en-IN')}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                          Scanned Copy
+                                        </span>
+                                        <a
+                                          href={`/api/transactions/scanned/${scan.id}/view?token=${encodeURIComponent(localStorage.getItem("bcd_token") || "")}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" /> View Copy
+                                        </a>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-amber-600 text-[11px] italic block p-3 bg-white rounded-xl border border-slate-200">
+                                  No scanned document copy uploaded for {activeDoc.documentName}.
+                                </span>
+                              )}
+                            </div>
+
+                            {/* SUPPORTING ANNEXURES */}
+                            <div>
+                              <span className="font-bold text-slate-800 block mb-2 text-[11px]">
+                                Supporting Annexures & Letters for: <span className="text-amber-800 font-bold">{activeDoc.documentName}</span>
+                              </span>
+                              {activeDoc.attachments && activeDoc.attachments.length > 0 ? (
+                                <div className="space-y-2">
+                                  {activeDoc.attachments.map((att) => (
+                                    <div key={att.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center text-[11px]">
+                                      <div className="flex items-center gap-2.5">
+                                        <Paperclip className="w-4 h-4 text-blue-500 shrink-0" />
+                                        <div>
+                                          <span className="font-mono text-slate-900 font-bold">{att.originalFileName}</span>
+                                          <span className="text-slate-400 ml-2 font-mono">({(att.fileSize / 1024).toFixed(1)} KB)</span>
+                                          <p className="text-[10px] text-slate-400 mt-0.5">{att.attachmentType || 'Supporting Document'} • Uploaded {new Date(att.createdDate).toLocaleDateString('en-IN')}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                                          Annexure
+                                        </span>
+                                        <a
+                                          href={`/api/transactions/attachments/${att.id}/view?token=${encodeURIComponent(localStorage.getItem("bcd_token") || "")}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" /> View Annexure
+                                        </a>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-[11px] italic block p-3 bg-white rounded-xl border border-slate-200">
+                                  No supporting annexures attached to {activeDoc.documentName}.
+                                </span>
+                              )}
+                            </div>
+
+                            {/* CHRONOLOGICAL TIMELINE & AUDIT TRAIL */}
+                            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-amber-400" />
+                                <h4 className="font-bold text-amber-400 uppercase tracking-wider text-[11px]">Document Timeline & Audit Trail</h4>
+                              </div>
+                              <div className="space-y-3 pl-2 border-l-2 border-slate-700">
+                                <div className="relative pl-4">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-amber-400 absolute -left-[18px] top-1" />
+                                  <p className="font-bold text-slate-100">Transaction Registered</p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {new Date(selectedTx.createdAt).toLocaleString('en-IN')} • Executed by {selectedTx.createdBy?.name || 'Authorized Custodian'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-300 mt-0.5">Transaction #{selectedTx.transactionNumber} ({selectedTx.transactionType}) created with initial custody parameters.</p>
+                                </div>
+
+                                {selectedTx.legalDocuments?.map((doc, idx) => (
+                                  <div key={idx} className="relative pl-4">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute -left-[18px] top-1" />
+                                    <p className="font-bold text-slate-100">Legal Document Attached: {doc.documentName}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {new Date(doc.createdAt).toLocaleString('en-IN')} • Document #{doc.documentNumber || 'N/A'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-300 mt-0.5">
+                                      Status: {doc.status} • Custodian: {doc.custody?.custodianName || 'Vault Manager'} ({doc.custody?.location || 'Main Vault'})
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* CHRONOLOGICAL TIMELINE & AUDIT TRAIL */}
-              <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  <h4 className="font-bold text-amber-400 uppercase tracking-wider text-[11px]">Document Timeline & Audit Trail</h4>
-                </div>
-                <div className="space-y-3 pl-2 border-l-2 border-slate-700">
-                  <div className="relative pl-4">
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400 absolute -left-[18px] top-1" />
-                    <p className="font-bold text-slate-100">Transaction Registered</p>
-                    <p className="text-[10px] text-slate-400">
-                      {new Date(selectedTx.createdAt).toLocaleString('en-IN')} • Executed by {selectedTx.createdBy?.name || 'Authorized Custodian'}
-                    </p>
-                    <p className="text-[11px] text-slate-300 mt-0.5">Transaction #{selectedTx.transactionNumber} ({selectedTx.transactionType}) created with initial custody parameters.</p>
+                    )}
                   </div>
 
-                  {selectedTx.legalDocuments?.map((doc, idx) => (
-                    <div key={idx} className="relative pl-4">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute -left-[18px] top-1" />
-                      <p className="font-bold text-slate-100">Legal Document Attached: {doc.documentName}</p>
-                      <p className="text-[10px] text-slate-400">
-                        {new Date(doc.createdAt).toLocaleString('en-IN')} • Document #{doc.documentNumber || 'N/A'}
-                      </p>
-                      <p className="text-[11px] text-slate-300 mt-0.5">
-                        Status: {doc.status} • Custodian: {doc.custody?.custodianName || 'Vault Manager'} ({doc.custody?.location || 'Main Vault'})
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
-              <button onClick={() => setShowDetailsModal(false)} className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-xl">
-                Close Details
-              </button>
-            </div>
+                  <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+                    <button onClick={() => setShowDetailsModal(false)} className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-xl cursor-pointer">
+                      Close Details
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
 
           </div>
         </div>

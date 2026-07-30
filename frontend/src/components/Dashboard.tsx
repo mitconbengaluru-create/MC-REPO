@@ -98,21 +98,7 @@ export default function Dashboard({ documents, checkouts, users, transactions = 
       )}
 
       {/* CORE STATS WIDGETS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        
-        {/* Total Vault Documents */}
-        <div onClick={() => onNavigate("repo")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-slate-300 transition-all cursor-pointer">
-          <div className="flex justify-between items-start">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vault Files</span>
-            <span className="bg-slate-100 p-2 rounded-xl text-slate-700">
-              <FileText className="w-5 h-5 stroke-[1.5]" />
-            </span>
-          </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-900 font-display">{totalDocs}</span>
-            <span className="text-[10px] text-slate-500 font-medium bg-slate-50 px-1 rounded">Files stored</span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         {/* Total Legal Documents */}
         <div onClick={() => onNavigate("legal")} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-xs hover:border-amber-500/40 transition-all cursor-pointer">

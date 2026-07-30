@@ -22,7 +22,7 @@ function rateLimitErrorHandler(message) {
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
+  max: 5000,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitErrorHandler('Too many requests, please try again after 15 minutes.'),

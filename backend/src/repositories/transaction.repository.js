@@ -98,14 +98,27 @@ export class TransactionRepository {
 
   async listTransactions(params = {}) {
     try {
-      const { page = 1, limit = 10, status, transactionType, search } = params;
+      const { page = 1, limit = 10, status, transactionType, search, company, companyName } = params;
       const skip = (Number(page) - 1) * Number(limit);
 
       const where = {};
       if (status) where.status = status;
       if (transactionType) where.transactionType = transactionType;
+
+      const targetCompany = companyName || company;
+      if (targetCompany) {
+        where.parties = {
+          some: {
+            name: { contains: targetCompany, mode: 'insensitive' }
+          }
+        };
+      }
+
       if (search) {
         where.OR = [
+          { parties: { some: { name: { contains: search, mode: 'insensitive' } } } },
+          { legalDocuments: { some: { documentName: { contains: search, mode: 'insensitive' } } } },
+          { legalDocuments: { some: { documentNumber: { contains: search, mode: 'insensitive' } } } },
           { transactionNumber: { contains: search, mode: 'insensitive' } },
           { transactionType: { contains: search, mode: 'insensitive' } },
           { remarks: { contains: search, mode: 'insensitive' } },
@@ -291,19 +304,33 @@ export class TransactionRepository {
 
   async listLegalDocuments(params = {}) {
     try {
-      const { page = 1, limit = 10, transactionId, documentType, status, search } = params;
+      const { page = 1, limit = 10, transactionId, documentType, status, search, company, companyName } = params;
       const skip = (page - 1) * limit;
 
       const where = {};
       if (transactionId) where.transactionId = transactionId;
       if (documentType) where.documentType = documentType;
       if (status) where.status = status;
+
+      const targetCompany = companyName || company;
+      if (targetCompany) {
+        where.transaction = {
+          parties: {
+            some: {
+              name: { contains: targetCompany, mode: 'insensitive' }
+            }
+          }
+        };
+      }
+
       if (search) {
         where.OR = [
           { documentName: { contains: search, mode: 'insensitive' } },
           { documentNumber: { contains: search, mode: 'insensitive' } },
           { category: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
+          { description: { contains: search, mode: 'insensitive' } },
+          { transaction: { parties: { some: { name: { contains: search, mode: 'insensitive' } } } } },
+          { transaction: { transactionNumber: { contains: search, mode: 'insensitive' } } }
         ];
       }
 
@@ -314,7 +341,15 @@ export class TransactionRepository {
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: {
-            transaction: { select: { id: true, transactionNumber: true } },
+            transaction: {
+              select: {
+                id: true,
+                transactionNumber: true,
+                parties: {
+                  select: { id: true, partyType: true, name: true }
+                }
+              }
+            },
             custody: true,
             _count: { select: { scannedDocuments: true, attachments: true, versions: true } }
           }

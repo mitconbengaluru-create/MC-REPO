@@ -126,13 +126,30 @@ export class StorageService {
    */
   static async uploadObject(bucket, path, fileBody, options = {}) {
     try {
-      const { data, error } = await supabaseAdmin.storage
+      let { data, error } = await supabaseAdmin.storage
         .from(bucket)
         .upload(path, fileBody, {
           upsert: true,
           contentType: options.contentType || 'application/octet-stream',
           cacheControl: options.cacheControl || '3600',
         });
+
+      if (error && (error.message?.includes('Bucket not found') || error.statusCode === '404' || error.status === 404)) {
+        try {
+          await supabaseAdmin.storage.createBucket(bucket, { public: true });
+          const retry = await supabaseAdmin.storage
+            .from(bucket)
+            .upload(path, fileBody, {
+              upsert: true,
+              contentType: options.contentType || 'application/octet-stream',
+              cacheControl: options.cacheControl || '3600',
+            });
+          data = retry.data;
+          error = retry.error;
+        } catch (createErr) {
+          console.warn('[Supabase Storage] Bucket auto-creation attempt warning:', createErr.message);
+        }
+      }
 
       if (error) throw error;
       return data;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, UserRole, SecurityPolicy } from "../types";
-import { Shield, Eye, Trash, UserPlus, Users as UsersIcon, ShieldAlert } from "lucide-react";
+import { Shield, Eye, Trash, UserPlus, Users as UsersIcon, ShieldAlert, CheckCircle2 } from "lucide-react";
 
 interface UserManagerProps {
   users: User[];
@@ -21,10 +21,12 @@ export default function UserManager({
   // Create User fields
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<UserRole>("others");
+  const [role, setRole] = useState<User['role']>("others");
   const [designation, setDesignation] = useState("");
+  const [initialPassword, setInitialPassword] = useState("");
   const [createUserError, setCreateUserError] = useState("");
   const [createUserSuccess, setCreateUserSuccess] = useState(false);
+  const [createdTempPass, setCreatedTempPass] = useState("");
 
   // Security policy fields
   const [passwordMinLength, setPasswordMinLength] = useState(policies.passwordMinLength);
@@ -73,16 +75,20 @@ export default function UserManager({
           "X-Operator-Name": currentUser.name,
           "X-Operator-Role": currentUser.role
         },
-        body: JSON.stringify({ name, email, role, designation })
+        body: JSON.stringify({ name, email, role, designation, initialPassword })
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to create user record.");
 
       setCreateUserSuccess(true);
+      if (data.temporaryPassword) {
+        setCreatedTempPass(data.temporaryPassword);
+      }
       setName("");
       setEmail("");
       setDesignation("");
+      setInitialPassword("");
       onRefresh();
     } catch (err: any) {
       setCreateUserError(err.message || "Server Error.");
@@ -162,6 +168,7 @@ export default function UserManager({
   };
 
   const isSuperAdmin = currentUser.role === "super-admin";
+  const isAdmin = currentUser.role === "admin" || currentUser.role === "super-admin";
 
   return (
     <div id="user-mangement-panel" className="space-y-6 leading-relaxed font-sans">
@@ -244,15 +251,22 @@ export default function UserManager({
         </div>
 
         {/* CREATE NEW STAFF RECORD FORM */}
-        {isSuperAdmin && (
+        {(isAdmin || isSuperAdmin) && (
           <div className="border border-slate-200 rounded-xl bg-slate-50/50 p-4 space-y-3.5 mt-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-1">
               <UserPlus className="w-4 h-4 text-slate-500" /> Create Organizational Account
             </h3>
             
             {createUserSuccess && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-lg text-xs flex items-center gap-2">
-                <span>Account generated successfully! Audit path created.</span>
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-lg text-xs space-y-1.5">
+                <p className="font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Account generated successfully!
+                </p>
+                {createdTempPass && (
+                  <p className="font-mono text-emerald-900 bg-white p-2 rounded border border-emerald-200 text-xs">
+                    Temporary Passcode: <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 select-all">{createdTempPass}</span> (Share this passcode with the new user for first-time setup)
+                  </p>
+                )}
               </div>
             )}
 
@@ -262,7 +276,7 @@ export default function UserManager({
               </div>
             )}
 
-            <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+            <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <div>
                 <input
                   type="text"
@@ -307,12 +321,23 @@ export default function UserManager({
                 />
               </div>
 
-              <div className="md:col-span-4 flex justify-end">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Passcode (Optional)"
+                  value={initialPassword}
+                  onChange={(e) => setInitialPassword(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none font-mono"
+                  title="Optional: Set custom password or leave blank for auto-generated passcode"
+                />
+              </div>
+
+              <div className="md:col-span-5 flex justify-end">
                 <button
                   type="submit"
                   className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 cursor-pointer"
                 >
-                  Confirm Staff Credentials Check
+                  Generate User Account
                 </button>
               </div>
             </form>

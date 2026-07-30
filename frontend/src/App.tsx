@@ -61,9 +61,8 @@ export default function App() {
     const seenIds = new Set(documents.map(d => d.id));
 
     transactions.forEach(tx => {
-      const partyNames = tx.parties && tx.parties.length > 0
-        ? tx.parties.map(p => p.partyName).join(', ')
-        : (tx.transactionType || 'Legal Transaction');
+      const companyParty = tx.parties?.find(p => p.partyType === 'COMPANY' || p.partyType === 'LENDER') || tx.parties?.[0];
+      const companyName = companyParty ? ((companyParty as any).name || (companyParty as any).partyName || companyParty.partyType) : 'MITCON Credentia';
 
       const placeOfHolding = tx.executionPlace || 'Legal Vault';
       const defaultDate = tx.executionDate ? new Date(tx.executionDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
@@ -75,13 +74,13 @@ export default function App() {
             const isCheckedOut = ld.custodyStatus === 'CHECKED_OUT' || ld.status === 'Checked Out' || ld.custody?.status === 'CHECKED_OUT';
             combined.push({
               id: ld.id,
-              documentId: ld.documentNumber || `LD-${ld.id.slice(0, 8)}`,
-              documentName: `${ld.documentName} [Ref: ${ld.documentNumber || tx.transactionNumber}]`,
+              documentId: ld.documentNumber || tx.transactionNumber || `LD-${ld.id.slice(0, 8)}`,
+              documentName: ld.documentName,
               dateUploaded: ld.receivedDate ? new Date(ld.receivedDate).toISOString().split('T')[0] : defaultDate,
               filePath: '',
               status: isCheckedOut ? 'Checked Out' : 'Approved',
               uploadedBy: ld.custody?.custodianName || 'Legal Admin',
-              client: partyNames,
+              client: companyName,
               dateOfRegistration: ld.receivedDate ? new Date(ld.receivedDate).toISOString().split('T')[0] : defaultDate,
               placeOfHolding: ld.custody?.location || ld.location || placeOfHolding
             });
@@ -133,30 +132,41 @@ export default function App() {
         return;
       }
 
-      const [docs, txs, checks, userItems, returnItems, notifyItems, policyData] = await Promise.all([
-        docsRes.json(),
-        txsRes.json(),
-        checksRes.json(),
-        usersRes.json(),
-        retRes.json(),
-        notRes.json(),
-        polRes.json()
-      ]);
-
-      if (docsRes.ok) setDocuments(Array.isArray(docs) ? docs : (docs.data || []));
-      if (txsRes.ok) setTransactions(Array.isArray(txs) ? txs : (txs.data || txs.transactions || []));
-      if (checksRes.ok) setCheckouts(Array.isArray(checks) ? checks : (checks.data || []));
+      if (docsRes.ok) {
+        const docs = await docsRes.json().catch(() => null);
+        if (docs) setDocuments(Array.isArray(docs) ? docs : (docs.data || []));
+      }
+      if (txsRes.ok) {
+        const txs = await txsRes.json().catch(() => null);
+        if (txs) setTransactions(Array.isArray(txs) ? txs : (txs.data || txs.transactions || []));
+      }
+      if (checksRes.ok) {
+        const checks = await checksRes.json().catch(() => null);
+        if (checks) setCheckouts(Array.isArray(checks) ? checks : (checks.data || []));
+      }
       if (usersRes.ok) {
-        setUsers(userItems);
-        const freshUser = userItems.find((u: User) => u.email === user?.email);
-        if (freshUser) {
-          setUser(freshUser);
-          localStorage.setItem("bcd_user", JSON.stringify(freshUser));
+        const userItems = await usersRes.json().catch(() => null);
+        if (Array.isArray(userItems)) {
+          setUsers(userItems);
+          const freshUser = userItems.find((u: User) => u.email === user?.email);
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem("bcd_user", JSON.stringify(freshUser));
+          }
         }
       }
-      if (retRes.ok) setReturns(returnItems);
-      if (notRes.ok) setNotifications(notifyItems);
-      if (polRes.ok) setPolicies(policyData);
+      if (retRes.ok) {
+        const returnItems = await retRes.json().catch(() => null);
+        if (returnItems) setReturns(returnItems);
+      }
+      if (notRes.ok) {
+        const notifyItems = await notRes.json().catch(() => null);
+        if (notifyItems) setNotifications(notifyItems);
+      }
+      if (polRes.ok) {
+        const policyData = await polRes.json().catch(() => null);
+        if (policyData) setPolicies(policyData);
+      }
 
     } catch (error) {
       console.error("Error synchronization indices:", error);
@@ -169,7 +179,7 @@ export default function App() {
   useEffect(() => {
     if (token) {
       fetchAllData();
-      const poller = setInterval(fetchAllData, 8000);
+      const poller = setInterval(fetchAllData, 30000);
 
       const socket = io(window.location.origin || "http://localhost:5000", {
         auth: { token }

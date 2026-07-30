@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-  FileSignature, CheckCircle2, History, ShieldAlert, BadgeInfo, Undo2 
+  FileSignature, CheckCircle2, History, ShieldAlert, BadgeInfo, Undo2, Building 
 } from "lucide-react";
 import { Document, Checkout, User } from "../types";
 import SignatureCanvas from "./SignatureCanvas";
@@ -60,30 +60,16 @@ export default function CheckoutReturn({
   const [isOpenCheckoutDropdown, setIsOpenCheckoutDropdown] = useState(false);
   const [isOpenReturnDropdown, setIsOpenReturnDropdown] = useState(false);
 
-  const getCheckoutSuggestions = () => {
+  const getCheckoutCompanySuggestions = () => {
     if (!checkoutSearch.trim()) return [];
     const term = checkoutSearch.toLowerCase();
-    const list: { key: string; value: string; doc: Document }[] = [];
-    const seen = new Set<string>();
-
+    const companies = new Set<string>();
     for (const d of documents) {
-      if (
-        d.client.toLowerCase().includes(term) ||
-        d.documentName.toLowerCase().includes(term) ||
-        d.documentId.toLowerCase().includes(term) ||
-        d.placeOfHolding.toLowerCase().includes(term)
-      ) {
-        if (!seen.has(d.id)) {
-          seen.add(d.id);
-          list.push({
-            key: d.documentId ? `Ref: ${d.documentId}` : "Doc",
-            value: d.documentName,
-            doc: d
-          });
-        }
+      if (d.client && d.client.toLowerCase().includes(term)) {
+        companies.add(d.client);
       }
     }
-    return list.slice(0, 8);
+    return Array.from(companies).slice(0, 8);
   };
 
   const getReturnSuggestions = () => {
@@ -312,11 +298,12 @@ export default function CheckoutReturn({
             
             <div className="grid grid-cols-1 gap-3.5">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Target Document *</label>
+                <label className="block text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Target Company & Document *</label>
                 <div className="space-y-2 relative">
+                  {/* Top Input: Search Company Name */}
                   <input
                     type="text"
-                    placeholder="Search available documents (by name, client, or place)..."
+                    placeholder="Search by Company Name (e.g. MITCON Credentia)..."
                     value={checkoutSearch}
                     onChange={(e) => {
                       setCheckoutSearch(e.target.value);
@@ -324,39 +311,38 @@ export default function CheckoutReturn({
                     }}
                     onFocus={() => setShowCheckoutSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowCheckoutSuggestions(false), 200)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-400"
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-400 font-medium"
                   />
 
+                  {/* Company Suggestions Dropdown (Filtered strictly by Unique Company Name) */}
                   {showCheckoutSuggestions && checkoutSearch.trim() && (
                     <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-56 overflow-y-auto divide-y divide-slate-100 py-1">
-                      {getCheckoutSuggestions().length > 0 ? (
-                        getCheckoutSuggestions().map((item, idx) => (
+                      {getCheckoutCompanySuggestions().length > 0 ? (
+                        getCheckoutCompanySuggestions().map((companyName, idx) => (
                           <button
                             key={idx}
                             type="button"
                             onMouseDown={() => {
-                              handleDocChange(item.doc.id);
-                              setCheckoutSearch('');
+                              setCheckoutSearch(companyName);
                               setShowCheckoutSuggestions(false);
                             }}
                             className="w-full px-4 py-2.5 text-left text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
                           >
-                            <div className="min-w-0 pr-2">
-                              <span className="font-semibold text-slate-800 truncate block">{item.doc.documentName}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">Party: {item.doc.client} • Holding: {item.doc.placeOfHolding}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900">{companyName}</span>
                             </div>
-                            <span className="text-[9px] uppercase font-bold text-slate-500 font-mono tracking-wider shrink-0 px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200">
-                              {item.doc.status}
+                            <span className="text-[9px] uppercase font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-mono">
+                              COMPANY
                             </span>
                           </button>
                         ))
                       ) : (
-                        <div className="px-4 py-3 text-left text-xs text-slate-400 italic">No matching legal or repository documents found</div>
+                        <div className="px-4 py-3 text-left text-xs text-slate-400 italic">No matching companies found in uploaded legal documents</div>
                       )}
                     </div>
                   )}
 
-                  {/* Custom Selector Trigger Button */}
+                  {/* Custom Target Document Selector Button & Dropdown */}
                   <div className="relative">
                     <button
                       type="button"
@@ -366,7 +352,9 @@ export default function CheckoutReturn({
                       <span className="truncate">
                         {docDbId 
                           ? documents.find(d => d.id === docDbId)?.documentName || "Select Document..."
-                          : "Select Document..."
+                          : checkoutSearch.trim()
+                            ? `Select document under "${checkoutSearch}"...`
+                            : "Select Document..."
                         }
                       </span>
                       <span className="text-slate-400 text-[10px] shrink-0 ml-2">
@@ -391,16 +379,12 @@ export default function CheckoutReturn({
                             Reset selection
                           </div>
                           {documents.filter(d => 
-                            d.id === docDbId ||
-                            d.documentName.toLowerCase().includes(checkoutSearch.toLowerCase()) ||
-                            d.client.toLowerCase().includes(checkoutSearch.toLowerCase()) ||
-                            d.placeOfHolding.toLowerCase().includes(checkoutSearch.toLowerCase())
+                            !checkoutSearch.trim() ||
+                            d.client.toLowerCase().includes(checkoutSearch.toLowerCase())
                           ).length > 0 ? (
                             documents.filter(d => 
-                              d.id === docDbId ||
-                              d.documentName.toLowerCase().includes(checkoutSearch.toLowerCase()) ||
-                              d.client.toLowerCase().includes(checkoutSearch.toLowerCase()) ||
-                              d.placeOfHolding.toLowerCase().includes(checkoutSearch.toLowerCase())
+                              !checkoutSearch.trim() ||
+                              d.client.toLowerCase().includes(checkoutSearch.toLowerCase())
                             ).map(d => {
                               const isOut = d.status === "Checked Out";
                               return (
@@ -409,6 +393,7 @@ export default function CheckoutReturn({
                                   onClick={() => {
                                     if (!isOut) {
                                       handleDocChange(d.id);
+                                      if (d.client) setCheckoutSearch(d.client);
                                       setIsOpenCheckoutDropdown(false);
                                     }
                                   }}
@@ -429,7 +414,7 @@ export default function CheckoutReturn({
                                     )}
                                   </div>
                                   <div className="text-[10px] text-slate-400 flex items-center gap-2 truncate">
-                                    <span>Client: {d.client}</span>
+                                    <span>Company / Party: {d.client}</span>
                                     <span>•</span>
                                     <span>Holding: {d.placeOfHolding}</span>
                                   </div>
@@ -437,7 +422,9 @@ export default function CheckoutReturn({
                               );
                             })
                           ) : (
-                            <div className="px-3 py-3 text-slate-400 italic text-center">No documents matching search filters.</div>
+                            <div className="px-3 py-3 text-slate-400 italic text-center">
+                              No documents uploaded under company "{checkoutSearch}".
+                            </div>
                           )}
                         </div>
                       </>
@@ -445,7 +432,7 @@ export default function CheckoutReturn({
                   </div>
                 </div>
                 {selectedDocForCheckout && (
-                  <p className="text-[10px] text-amber-600 font-bold mt-1">✓ Pin-locked from Repository explorer.</p>
+                  <p className="text-[10px] text-amber-600 font-bold mt-1">Pin-locked from Repository explorer.</p>
                 )}
               </div>
             </div>

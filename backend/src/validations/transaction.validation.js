@@ -42,8 +42,8 @@ export const updatePartySchema = z.object({
 // Create Transaction Schema
 export const createTransactionSchema = z.object({
   body: z.object({
-    transactionNumber: z.string().trim().min(1, 'Transaction number is required.').max(100),
-    transactionType: z.string().trim().min(1, 'Transaction type is required.').max(100),
+    transactionNumber: z.string().trim().max(100).optional().or(z.literal('')),
+    transactionType: z.string().trim().max(100).optional().or(z.literal('')),
     executionDate: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).nullable().optional(),
     executionPlace: z.string().trim().max(255).nullable().optional(),
     transactionValue: z.union([z.number(), z.string()]).nullable().optional(),

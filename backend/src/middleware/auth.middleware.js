@@ -15,6 +15,8 @@ export async function requireAuth(req, res, next) {
       token = authHeader.slice(7);
     } else if (req.cookies?.token) {
       token = req.cookies.token;
+    } else if (req.query?.token) {
+      token = req.query.token;
     }
 
     if (!token || token === 'null' || token === 'undefined') {

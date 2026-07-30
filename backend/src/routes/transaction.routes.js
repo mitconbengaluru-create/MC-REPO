@@ -188,7 +188,19 @@ router.get('/scanned/:scannedId/view', async (req, res) => {
       return res.status(404).send('Scanned document record not found.');
     }
 
-    // 1. Try downloading directly from Supabase Storage bucket
+    // 1. Try redirecting directly to Supabase Storage Signed URL
+    try {
+      if (scannedDoc.storagePath) {
+        const signedData = await StorageService.generateDownloadUrl(STORAGE_BUCKETS.DOCUMENTS, scannedDoc.storagePath, 3600);
+        if (signedData?.signedUrl) {
+          return res.redirect(signedData.signedUrl);
+        }
+      }
+    } catch (supaErr) {
+      console.warn('[Supabase Storage Signed URL]: Trying direct blob download fallback...', supaErr.message);
+    }
+
+    // 2. Try downloading directly from Supabase Storage bucket
     try {
       if (scannedDoc.storagePath) {
         const supaBlob = await StorageService.downloadObject(STORAGE_BUCKETS.DOCUMENTS, scannedDoc.storagePath);
@@ -269,7 +281,19 @@ router.get('/attachments/:attachmentId/view', async (req, res) => {
       return res.status(404).send('Supporting attachment record not found.');
     }
 
-    // 1. Try downloading directly from Supabase Storage bucket
+    // 1. Try redirecting directly to Supabase Storage Signed URL
+    try {
+      if (attachment.storagePath) {
+        const signedData = await StorageService.generateDownloadUrl(STORAGE_BUCKETS.DOCUMENTS, attachment.storagePath, 3600);
+        if (signedData?.signedUrl) {
+          return res.redirect(signedData.signedUrl);
+        }
+      }
+    } catch (supaErr) {
+      console.warn('[Supabase Attachment Signed URL]: Trying direct blob or local fallback...', supaErr.message);
+    }
+
+    // 2. Try downloading directly from Supabase Storage bucket
     try {
       if (attachment.storagePath) {
         const supaBlob = await StorageService.downloadObject(STORAGE_BUCKETS.DOCUMENTS, attachment.storagePath);

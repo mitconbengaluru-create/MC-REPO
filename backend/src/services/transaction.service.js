@@ -23,17 +23,17 @@ export class TransactionService {
   // ==========================================
 
   async createTransaction(data, userId) {
-    if (!data.transactionNumber || !data.transactionNumber.trim()) {
-      throw new TransactionServiceError('Transaction number is required.', 400, 'VALIDATION_FAILED');
-    }
-    if (!data.transactionType || !data.transactionType.trim()) {
-      throw new TransactionServiceError('Transaction type is required.', 400, 'VALIDATION_FAILED');
-    }
+    let txNum = (data.transactionNumber && data.transactionNumber.trim())
+      ? data.transactionNumber.trim()
+      : `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // Check duplicate transaction number
-    const existing = await this.transactionRepository.findTransactionByNumber(data.transactionNumber.trim());
+    let txType = (data.transactionType && data.transactionType.trim())
+      ? data.transactionType.trim()
+      : 'Legal Transaction';
+
+    let existing = await this.transactionRepository.findTransactionByNumber(txNum);
     if (existing) {
-      throw new TransactionServiceError(`Transaction number "${data.transactionNumber}" already exists.`, 409, 'DUPLICATE_TRANSACTION');
+      txNum = `${txNum}-${Math.floor(Math.random() * 1000)}`;
     }
 
     // Validate validity dates
@@ -177,19 +177,22 @@ export class TransactionService {
       throw new TransactionServiceError('Document type is required.', 400, 'VALIDATION_FAILED');
     }
 
-    if (data.documentNumber && data.documentNumber.trim()) {
-      const existing = await this.transactionRepository.findLegalDocumentByNumber(data.documentNumber.trim());
+    let docNum = (data.documentNumber && data.documentNumber.trim()) ? data.documentNumber.trim() : null;
+    if (docNum) {
+      const existing = await this.transactionRepository.findLegalDocumentByNumber(docNum);
       if (existing) {
-        throw new TransactionServiceError(`Document number "${data.documentNumber}" already exists.`, 409, 'DUPLICATE_DOCUMENT');
+        docNum = `${docNum}-${Math.floor(Math.random() * 1000)}`;
       }
+    } else {
+      docNum = `DOC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     }
 
     const docPayload = {
       transactionId,
-      documentType: data.documentType,
+      documentType: data.documentType || 'OTHERS',
       documentName: data.documentName.trim(),
-      documentNumber: data.documentNumber ? data.documentNumber.trim() : null,
-      category: data.category ? data.category.trim() : null,
+      documentNumber: docNum,
+      category: data.category ? data.category.trim() : 'General',
       description: data.description ? data.description.trim() : null,
       status: data.status || 'DRAFT',
       createdById: userId || null
@@ -197,19 +200,18 @@ export class TransactionService {
 
     const legalDoc = await this.transactionRepository.createLegalDocument(docPayload);
 
-    // Initialize default custody record
-    if (data.custodianName) {
-      await this.transactionRepository.upsertCustody(legalDoc.id, {
-        custodianName: data.custodianName.trim(),
-        department: data.department ? data.department.trim() : null,
-        location: data.location ? data.location.trim() : null,
-        originalAvailable: data.originalAvailable !== undefined ? Boolean(data.originalAvailable) : true,
-        scannedAvailable: false,
-        numberOfOriginalSets: data.numberOfOriginalSets ? Number(data.numberOfOriginalSets) : 1,
-        receivedDate: data.receivedDate ? new Date(data.receivedDate) : new Date(),
-        status: data.custodyStatus || 'IN_SAFE'
-      });
-    }
+    // Initialize physical custody record
+    const custodianName = (data.custodianName && data.custodianName.trim()) ? data.custodianName.trim() : 'Safe Custody Officer';
+    await this.transactionRepository.upsertCustody(legalDoc.id, {
+      custodianName,
+      department: data.department ? data.department.trim() : 'Legal & Vault Compliance',
+      location: data.location ? data.location.trim() : 'Main Safe Vault',
+      originalAvailable: data.originalAvailable !== undefined ? Boolean(data.originalAvailable) : true,
+      scannedAvailable: false,
+      numberOfOriginalSets: data.numberOfOriginalSets ? Number(data.numberOfOriginalSets) : 1,
+      receivedDate: data.receivedDate ? new Date(data.receivedDate) : new Date(),
+      status: data.custodyStatus || 'IN_SAFE'
+    });
 
     return await this.getLegalDocumentDetails(legalDoc.id);
   }

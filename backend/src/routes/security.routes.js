@@ -34,8 +34,8 @@ router.get('/users', requireRole(['admin', 'super-admin']), async (req, res) => 
   }
 });
 
-// POST /api/users — Only super-admin can create new accounts
-router.post('/users', requireRole(['super-admin']), async (req, res) => {
+// POST /api/users — Admins and Super-Admins can create new accounts
+router.post('/users', requireRole(['admin', 'super-admin']), async (req, res) => {
   const body = req.body;
   try {
     const email = (body.email || '').trim().toLowerCase();
@@ -50,8 +50,10 @@ router.post('/users', requireRole(['super-admin']), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name and role are required.' });
     }
 
-    // Generate a secure random default password (not hardcoded)
-    const tempPassword = crypto.randomBytes(8).toString('hex'); // 16-char random hex
+    // Custom initial password or clear auto-generated passcode
+    const tempPassword = (body.initialPassword && body.initialPassword.trim())
+      ? body.initialPassword.trim()
+      : `Mitcon@${Math.floor(1000 + Math.random() * 9000)}`;
     const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
 
     const newUser = await prisma.user.create({
@@ -80,8 +82,8 @@ router.post('/users', requireRole(['super-admin']), async (req, res) => {
 
     await broadcastSystemNotification(
       'New User Account Created',
-      `${req.user.name} created a new user account for ${newUser.name} (${newUser.email}). Role: ${newUser.role.toUpperCase()}.`
-    );
+      `${req.user?.name || 'Admin'} created a new user account for ${newUser.name} (${newUser.email}). Role: ${newUser.role.toUpperCase()}.`
+    ).catch((err) => console.warn('[Notification Non-Fatal Warning]:', err.message));
 
     // Return the temp password once so the admin can share it securely — it's hashed in DB
     res.status(200).json({ ...newUser, temporaryPassword: tempPassword });

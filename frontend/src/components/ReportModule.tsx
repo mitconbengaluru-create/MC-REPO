@@ -52,7 +52,7 @@ export default function ReportModule({ documents, checkouts, users, returns, tra
     // 1. Registered events from transactions & legalDocuments
     (transactions || []).forEach(tx => {
       const parties = tx.parties && tx.parties.length > 0
-        ? tx.parties.map(p => p.partyName).join(', ')
+        ? tx.parties.map(p => (p as any).name || (p as any).partyName || p.partyType).join(', ')
         : (tx.transactionType || 'Legal Transaction');
 
       if (tx.legalDocuments && tx.legalDocuments.length > 0) {
