@@ -392,97 +392,97 @@ Guarantees file locking and prevents edit conflicts:
 The following files have been created in the `backend/` project workspace:
 
 ### 6.1. Configuration Layer (`src/config/`)
-* **[env.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/env.js):** Environment variable verification and schema parsing. Stores the `REDIS_ENABLED` boolean toggle flag.
-* **[database.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/database.js):** Exports the Prisma database connection client singleton.
-* **[supabase.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/supabase.js):** Initializes and exports the Supabase client wrapper. Defines bucket storage identifiers.
-* **[redis.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/redis.js):** Sets up and exports the **ioredis** Client connection singleton. Yields a lightweight mock client if `REDIS_ENABLED` is false.
-* **[bullmq.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/bullmq.js):** Defines BullMQ connection credentials, default retries, exponential backoffs, and queue limits.
-* **[logger.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/logger.js):** Centralized Pino client configurations.
-* **[security.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/security.js):** Stores CORS origins, Helmet CSP policies, and encryption parameters.
-* **[index.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/config/index.js):** Central portal re-exporting all configuration singletons.
+* **[env.js](./backend/src/config/env.js):** Environment variable verification and schema parsing. Stores the `REDIS_ENABLED` boolean toggle flag.
+* **[database.js](./backend/src/config/database.js):** Exports the Prisma database connection client singleton.
+* **[supabase.js](./backend/src/config/supabase.js):** Initializes and exports the Supabase client wrapper. Defines bucket storage identifiers.
+* **[redis.js](./backend/src/config/redis.js):** Sets up and exports the **ioredis** Client connection singleton. Yields a lightweight mock client if `REDIS_ENABLED` is false.
+* **[bullmq.js](./backend/src/config/bullmq.js):** Defines BullMQ connection credentials, default retries, exponential backoffs, and queue limits.
+* **[logger.js](./backend/src/config/logger.js):** Centralized Pino client configurations.
+* **[security.js](./backend/src/config/security.js):** Stores CORS origins, Helmet CSP policies, and encryption parameters.
+* **[index.js](./backend/src/config/index.js):** Central portal re-exporting all configuration singletons.
 
 ### 6.2. Logging & Middlewares (`src/shared/`, `src/middleware/`)
-* **[request-id.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/shared/request-id.js):** Correlation request identifier generator middleware.
-* **[requestLogger.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/middleware/requestLogger.js):** HTTP request and response performance log logger.
-* **[errorLogger.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/middleware/errorLogger.js):** Global exception stack trace logging filter.
+* **[request-id.js](./backend/src/shared/request-id.js):** Correlation request identifier generator middleware.
+* **[requestLogger.js](./backend/src/middleware/requestLogger.js):** HTTP request and response performance log logger.
+* **[errorLogger.js](./backend/src/middleware/errorLogger.js):** Global exception stack trace logging filter.
 
 ### 6.3. Application Bootstrap
-* **[app.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/app.js):** Express application configuration, payload limit parsers, route mounts, and global error formatters.
-* **[server.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/server.js):** The HTTP server network bootstrapper. Instantiates graceful shutdowns for BullMQ workers and Redis connections on process signals (`SIGINT`, `SIGTERM`).
+* **[app.js](./backend/src/app.js):** Express application configuration, payload limit parsers, route mounts, and global error formatters.
+* **[server.js](./backend/src/server.js):** The HTTP server network bootstrapper. Instantiates graceful shutdowns for BullMQ workers and Redis connections on process signals (`SIGINT`, `SIGTERM`).
 
 ### 6.4. Database ORM Foundation (`prisma/`)
-* **[schema.prisma](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/prisma/schema.prisma):** Foundational configuration defining standard PostgreSQL datasource and generator.
-* **[seed.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/prisma/seed.js):** Data populator runner template placeholder.
+* **[schema.prisma](./backend/prisma/schema.prisma):** Foundational configuration defining standard PostgreSQL datasource and generator.
+* **[seed.js](./backend/prisma/seed.js):** Data populator runner template placeholder.
 
 ### 6.5. Infrastructure Services (`src/services/`)
-* **[storage.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/services/storage/storage.service.js):** Wraps storage operations (signed URLs, moves, deletes) executing against Supabase buckets.
+* **[storage.service.js](./backend/src/services/storage/storage.service.js):** Wraps storage operations (signed URLs, moves, deletes) executing against Supabase buckets.
 
 ### 6.6. Background Processing & Workers Layer (`src/jobs/`)
-* **[audit.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/audit.queue.js):** Asynchronous transaction logging publisher client. Runs on mock objects if `REDIS_ENABLED` is false.
-* **[notification.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/notification.queue.js):** Alert and mailer job publisher client.
-* **[preview.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/preview.queue.js):** Low-res preview generation job publisher client.
-* **[report.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/report.queue.js):** Large spreadsheet compilation job publisher client.
-* **[scheduler.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/scheduler.queue.js):** Sweeper and lock cleanup cron publisher client.
-* **[virus.queue.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/queues/virus.queue.js):** Upload drafting scan job publisher client.
-* **[audit.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/audit.worker.js):** Consumer thread executing audit logs database writes.
-* **[notification.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/notification.worker.js):** Consumer thread dispatching mailers and WebSockets alerts.
-* **[preview.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/preview.worker.js):** Consumer thread running rendering thumbnails.
-* **[report.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/report.worker.js):** Consumer thread rendering CSV metrics sheets.
-* **[scheduler.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/scheduler.worker.js):** Consumer thread sweeping expired database check-out locks.
-* **[virus.worker.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/workers/virus.worker.js):** Consumer thread executing upload file antivirus evaluations.
-* **[index.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/jobs/index.js):** Consolidated queues and workers registry, managing unified cluster shutdowns.
+* **[audit.queue.js](./backend/src/jobs/queues/audit.queue.js):** Asynchronous transaction logging publisher client. Runs on mock objects if `REDIS_ENABLED` is false.
+* **[notification.queue.js](./backend/src/jobs/queues/notification.queue.js):** Alert and mailer job publisher client.
+* **[preview.queue.js](./backend/src/jobs/queues/preview.queue.js):** Low-res preview generation job publisher client.
+* **[report.queue.js](./backend/src/jobs/queues/report.queue.js):** Large spreadsheet compilation job publisher client.
+* **[scheduler.queue.js](./backend/src/jobs/queues/scheduler.queue.js):** Sweeper and lock cleanup cron publisher client.
+* **[virus.queue.js](./backend/src/jobs/queues/virus.queue.js):** Upload drafting scan job publisher client.
+* **[audit.worker.js](./backend/src/jobs/workers/audit.worker.js):** Consumer thread executing audit logs database writes.
+* **[notification.worker.js](./backend/src/jobs/workers/notification.worker.js):** Consumer thread dispatching mailers and WebSockets alerts.
+* **[preview.worker.js](./backend/src/jobs/workers/preview.worker.js):** Consumer thread running rendering thumbnails.
+* **[report.worker.js](./backend/src/jobs/workers/report.worker.js):** Consumer thread rendering CSV metrics sheets.
+* **[scheduler.worker.js](./backend/src/jobs/workers/scheduler.worker.js):** Consumer thread sweeping expired database check-out locks.
+* **[virus.worker.js](./backend/src/jobs/workers/virus.worker.js):** Consumer thread executing upload file antivirus evaluations.
+* **[index.js](./backend/src/jobs/index.js):** Consolidated queues and workers registry, managing unified cluster shutdowns.
 
 ### 6.7. Authentication Layer (`src/auth/`, `src/middleware/`)
-* **[auth.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/auth/auth.service.js):** Core service handling business workflows, DTOs, constants, and direct Prisma DB queries.
-* **[auth.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/auth/auth.routes.js):** Express routing boundaries, Zod validator schemas, cookie setters, token parsers, and HTTP controller request handlers.
-* **[auth.middleware.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/middleware/auth.middleware.js):** Custom authentication and role access validation filters.
+* **[auth.service.js](./backend/src/auth/auth.service.js):** Core service handling business workflows, DTOs, constants, and direct Prisma DB queries.
+* **[auth.routes.js](./backend/src/auth/auth.routes.js):** Express routing boundaries, Zod validator schemas, cookie setters, token parsers, and HTTP controller request handlers.
+* **[auth.middleware.js](./backend/src/middleware/auth.middleware.js):** Custom authentication and role access validation filters.
 
 ### 6.8. Users Layer (`src/users/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[users.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/users/users.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[users.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/users/users.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[users.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/users.controller.js):** Interface controller routing requests to service functions.
-* **[users.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/users.repository.js):** User account querying and database updates logic.
-* **[users.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/users.util.js):** User mapper transformations converting db profiles to Response DTOs.
+* **[users.service.js](./backend/src/users/users.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[users.routes.js](./backend/src/users/users.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[users.controller.js](./backend/src/controllers/users.controller.js):** Interface controller routing requests to service functions.
+* **[users.repository.js](./backend/src/repositories/users.repository.js):** User account querying and database updates logic.
+* **[users.util.js](./backend/src/utils/users.util.js):** User mapper transformations converting db profiles to Response DTOs.
 
 ### 6.9. Roles Layer (`src/roles/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[roles.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/roles/roles.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[roles.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/roles/roles.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[roles.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/roles.controller.js):** Interface controller routing requests to service functions.
-* **[roles.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/roles.repository.js):** Role settings querying and database updates logic.
-* **[roles.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/roles.util.js):** Role mapper transformations converting db configurations to Response DTOs.
+* **[roles.service.js](./backend/src/roles/roles.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[roles.routes.js](./backend/src/roles/roles.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[roles.controller.js](./backend/src/controllers/roles.controller.js):** Interface controller routing requests to service functions.
+* **[roles.repository.js](./backend/src/repositories/roles.repository.js):** Role settings querying and database updates logic.
+* **[roles.util.js](./backend/src/utils/roles.util.js):** Role mapper transformations converting db configurations to Response DTOs.
 
 ### 6.10. Permissions Layer (`src/permissions/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[permissions.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/permissions/permissions.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[permissions.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/permissions/permissions.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[permissions.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/permissions.controller.js):** Interface controller routing requests to service functions.
-* **[permissions.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/permissions.repository.js):** Permission actions querying and database updates logic.
-* **[permissions.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/permissions.util.js):** Permission mapper transformations converting db configurations to Response DTOs.
+* **[permissions.service.js](./backend/src/permissions/permissions.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[permissions.routes.js](./backend/src/permissions/permissions.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[permissions.controller.js](./backend/src/controllers/permissions.controller.js):** Interface controller routing requests to service functions.
+* **[permissions.repository.js](./backend/src/repositories/permissions.repository.js):** Permission actions querying and database updates logic.
+* **[permissions.util.js](./backend/src/utils/permissions.util.js):** Permission mapper transformations converting db configurations to Response DTOs.
 
 ### 6.11. Sessions Layer (`src/sessions/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[sessions.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/sessions/sessions.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[sessions.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/sessions/sessions.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[sessions.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/sessions.controller.js):** Interface controller routing requests to service functions.
-* **[sessions.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/sessions.repository.js):** Session settings querying and database updates logic.
-* **[sessions.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/sessions.util.js):** Session mapper transformations and user-agent parsing logic.
+* **[sessions.service.js](./backend/src/sessions/sessions.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[sessions.routes.js](./backend/src/sessions/sessions.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[sessions.controller.js](./backend/src/controllers/sessions.controller.js):** Interface controller routing requests to service functions.
+* **[sessions.repository.js](./backend/src/repositories/sessions.repository.js):** Session settings querying and database updates logic.
+* **[sessions.util.js](./backend/src/utils/sessions.util.js):** Session mapper transformations and user-agent parsing logic.
 
 ### 6.12. RBAC Layer (`src/rbac/`, `src/middleware/`)
-* **[rbac.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/rbac/rbac.service.js):** Core role/permission resolution services, permission caching, and constant mappings.
-* **[auth.middleware.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/middleware/auth.middleware.js):** Consolidated Express guards (`requireAuth`, `requireSession`, `requireRole`, `requirePermission`).
-* **[README.md](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/rbac/README.md):** Module architecture LLD documentation.
+* **[rbac.service.js](./backend/src/rbac/rbac.service.js):** Core role/permission resolution services, permission caching, and constant mappings.
+* **[auth.middleware.js](./backend/src/middleware/auth.middleware.js):** Consolidated Express guards (`requireAuth`, `requireSession`, `requireRole`, `requirePermission`).
+* **[README.md](./backend/src/rbac/README.md):** Module architecture LLD documentation.
 
 ### 6.13. Devices Layer (`src/devices/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[devices.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/devices/devices.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[devices.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/devices/devices.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[devices.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/devices.controller.js):** Interface controller routing requests to service functions.
-* **[devices.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/devices.repository.js):** Session mapping queries to represent Devices.
-* **[devices.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/devices.util.js):** Device mapper transformations converting db profiles to Response DTOs.
+* **[devices.service.js](./backend/src/devices/devices.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[devices.routes.js](./backend/src/devices/devices.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[devices.controller.js](./backend/src/controllers/devices.controller.js):** Interface controller routing requests to service functions.
+* **[devices.repository.js](./backend/src/repositories/devices.repository.js):** Session mapping queries to represent Devices.
+* **[devices.util.js](./backend/src/utils/devices.util.js):** Device mapper transformations converting db profiles to Response DTOs.
 
 ### 6.14. Identity Activity Layer (`src/identity-activity/`, `src/controllers/`, `src/repositories/`, `src/utils/`)
-* **[identity-activity.service.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/identity-activity/identity-activity.service.js):** Core service handling business capabilities, DTOs, and constants.
-* **[identity-activity.routes.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/identity-activity/identity-activity.routes.js):** Express routing boundaries with Zod validator schemas.
-* **[identity-activity.controller.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/controllers/identity-activity.controller.js):** Interface controller routing requests to service functions.
-* **[identity-activity.repository.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/repositories/identity-activity.repository.js):** AuditLog querying for authentication activities.
-* **[identity-activity.util.js](file:///c:/Users/Vibin.Cariappa/Desktop/Credentia/backend/src/utils/identity-activity.util.js):** Activity mapper transformations converting db logs to DTOs.
+* **[identity-activity.service.js](./backend/src/identity-activity/identity-activity.service.js):** Core service handling business capabilities, DTOs, and constants.
+* **[identity-activity.routes.js](./backend/src/identity-activity/identity-activity.routes.js):** Express routing boundaries with Zod validator schemas.
+* **[identity-activity.controller.js](./backend/src/controllers/identity-activity.controller.js):** Interface controller routing requests to service functions.
+* **[identity-activity.repository.js](./backend/src/repositories/identity-activity.repository.js):** AuditLog querying for authentication activities.
+* **[identity-activity.util.js](./backend/src/utils/identity-activity.util.js):** Activity mapper transformations converting db logs to DTOs.
 
 ---
 

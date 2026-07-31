@@ -1377,9 +1377,9 @@ First Login Modal (Overlay):
 │                                                              │
 │  Recent Legal Documents         Recent Checkouts            │
 │  ┌─────────────────────────┐   ┌─────────────────────────┐  │
-│  │ TX-001 | Loan Agmt...   │   │ CHK-001 | PIP | Anand   │  │
-│  │ TX-002 | Mortgage...    │   │ CHK-002 | SIP | Ramesh   │  │
-│  │ TX-003 | Guarantee...   │   │ CHK-003 | MOD | Priya   │  │
+│  │ TX-001 | Loan Agmt...   │   │ CHK-001 | PIP | NAME 1  │  │
+│  │ TX-002 | Mortgage...    │   │ CHK-002 | SIP | NAME 2  │  │
+│  │ TX-003 | Guarantee...   │   │ CHK-003 | MOD | NAME 3  │  │
 │  └─────────────────────────┘   └─────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -1419,9 +1419,9 @@ First Login Modal (Overlay):
 │  👤 User Management                                          │
 ├──────────────────────────────────────────────────────────────┤
 │  Name          | Email                | Role    | Status     │
-│  Vibin C.      | vibin@mitcon...      | S-Admin | Active     │
-│  Ramesh K.     | ramesh@mitcon...     | Admin   | Active ✏️🗑 │
-│  Priya M.      | priya@mitcon...      | Others  | Active ✏️🗑 │
+│  NAME 1        | name1@mitcon...      | S-Admin | Active     │
+│  NAME 2        | name2@mitcon...      | Admin   | Active ✏️🗑 │
+│  NAME 3        | name3@mitcon...      | Others  | Active ✏️🗑 │
 ├──────────────────────────────────────────────────────────────┤
 │  + Create Organizational Account                             │
 │  ┌──────┬──────────────┬────────┬─────────────┬──────────┐  │
@@ -1709,10 +1709,10 @@ npx prisma migrate deploy
 ### Developer Declaration of Confidentiality & Liability
 
 **Project:** MITCON Credentia — Legal Document Management System  
-**Developer:** Vibin Cariappa  
+**Developer:** NAME  
 **Date:** 30 July 2026  
 
-**I, Vibin Cariappa (the Developer), hereby formally declare and confirm the following:**
+**I, NAME, hereby formally declare and confirm the following:**
 
 1. **No Confidential Data Accessed or Handled**: Throughout the entire duration of this project — from design to handover — **no confidential, sensitive, proprietary, or private documents or data belonging to MITCON Consultancy & Engineering Services Ltd., its clients, borrowers, or lenders have been accessed, viewed, downloaded, retained, copied, or stored by the Developer**.
 2. **No Unauthorized Database Access**: No data has been inserted or modified in the production database by the Developer without explicit authorization. Schema migration was executed using standard Prisma tooling creating empty structures only.
