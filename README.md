@@ -1708,11 +1708,10 @@ npx prisma migrate deploy
 
 ### Developer Declaration of Confidentiality & Liability
 
-**Project:** MITCON Credentia — Legal Document Management System  
-**Developer:** NAME  
+**Project:** MITCON Credentia — Legal Document Management System   
 **Date:** 30 July 2026  
 
-**I, NAME, hereby formally declare and confirm the following:**
+**I, Developer, hereby formally declare and confirm the following:**
 
 1. **No Confidential Data Accessed or Handled**: Throughout the entire duration of this project — from design to handover — **no confidential, sensitive, proprietary, or private documents or data belonging to MITCON Consultancy & Engineering Services Ltd., its clients, borrowers, or lenders have been accessed, viewed, downloaded, retained, copied, or stored by the Developer**.
 2. **No Unauthorized Database Access**: No data has been inserted or modified in the production database by the Developer without explicit authorization. Schema migration was executed using standard Prisma tooling creating empty structures only.
